@@ -264,4 +264,45 @@ ALTER TABLE IF EXISTS niche_data.wishlist
 CREATE INDEX IF NOT EXISTS idx_wishlist_customer_id
     ON niche_data.wishlist(customer_id);
 
+
+CREATE TABLE IF NOT EXISTS niche_data.admins (
+    admin_id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_login_at TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+INSERT INTO niche_data.admins (username, email, password_hash)
+VALUES
+    ('rayyan', 'rayyan@example.com', crypt('admin123', gen_salt('bf'))),
+    ('riya', 'riya@example.com', crypt('admin123', gen_salt('bf'))),
+    ('rija', 'rija@example.com', crypt('admin123', gen_salt('bf'))),
+    ('ukkashah', 'ukkashah@example.com', crypt('admin123', gen_salt('bf')));
+
+
+CREATE TABLE niche_data.admin_activity_log (
+    log_id SERIAL PRIMARY KEY,
+    admin_id INT REFERENCES niche_data.admins(admin_id),
+    action TEXT NOT NULL,
+    details JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+TRUNCATE TABLE niche_data.customers
+
+ALTER TABLE niche_data.customers
+ADD COLUMN password_hash TEXT,
+ADD COLUMN phone TEXT,
+ADD COLUMN address TEXT;
+
+ALTER TABLE niche_data.customers
+ALTER COLUMN password_hash SET NOT NULL;
+
+
 END;
