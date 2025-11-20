@@ -118,6 +118,13 @@ DROP INDEX IF EXISTS idx_reviews_text_search;
 CREATE INDEX IF NOT EXISTS idx_reviews_text_search 
 ON niche_data.reviews USING GIN (to_tsvector('english', review_text));
 
+CREATE INDEX IF NOT EXISTS idx_customers_address
+ON niche_data.customers(address);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_phone
+ON niche_data.customers(phone);
+
+
 
 
 SELECT 
@@ -126,3 +133,10 @@ FROM pg_indexes
 WHERE schemaname = 'niche_data'
 ORDER BY tablename;
 
+
+SELECT
+    COUNT(DISTINCT indexname) AS TotalIndexes
+FROM
+    pg_indexes
+WHERE
+    schemaname = 'niche_data'; 
