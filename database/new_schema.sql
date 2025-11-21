@@ -305,4 +305,8 @@ ALTER TABLE niche_data.customers
 ALTER COLUMN password_hash SET NOT NULL;
 
 
+ALTER TABLE niche_data.events
+ADD COLUMN order_id INTEGER;
+
+
 END;
