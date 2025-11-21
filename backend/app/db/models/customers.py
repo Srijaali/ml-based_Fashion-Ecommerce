@@ -5,7 +5,7 @@ from sqlalchemy.orm import relationship
 
 class Customer(Base):
     __tablename__ = "customers"
-
+    __table_args__ = {"schema": "niche_data"}
     customer_id = Column(String(255), primary_key=True, index=True)
     age = Column(Integer)
     postal_code = Column(String(20))
@@ -18,3 +18,6 @@ class Customer(Base):
     signup_date = Column(DateTime, default=datetime.utcnow)
     gender = Column(String(10))
     loyalty_score = Column(Float)
+    password_hash = Column(String(255))
+    phone = Column(String(255))
+    address = Column(String(255))

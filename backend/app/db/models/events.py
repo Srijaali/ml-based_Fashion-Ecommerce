@@ -6,7 +6,7 @@ from datetime import datetime
 
 class Event(Base):
     __tablename__ = "events"
-
+    __table_args__ = {"schema": "niche_data"}
     event_id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String(255))
     customer_id = Column(String(255), ForeignKey("customers.customer_id"))

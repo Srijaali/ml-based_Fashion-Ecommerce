@@ -1,10 +1,10 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, TIMESTAMP
+from sqlalchemy.sql import func
 from app.db.database import Base  # using the shared Base class
 
 class Article(Base):
     __tablename__ = "articles"
-
+    __table_args__ = {"schema": "niche_data"}
     article_id = Column(String, primary_key=True, index=True)
     product_code = Column(Integer)
     prod_name = Column(String(255))
@@ -22,6 +22,6 @@ class Article(Base):
     price = Column(Float)
     stock = Column(Integer)
     category_id = Column(Integer, ForeignKey("categories.category_id"))
-
-    # optional: relationship
-    # category = relationship("Category", back_populates="articles")
+    
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    last_updated = Column(TIMESTAMP(timezone=True), onupdate=func.now())
