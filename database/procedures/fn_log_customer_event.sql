@@ -48,7 +48,8 @@ FOR EACH ROW
 EXECUTE FUNCTION niche_data.fn_log_customer_event('add_to_cart');
 
 
-CREATE TRIGGER trg_event_order
-AFTER INSERT ON niche_data.orders
+
+CREATE TRIGGER trg_event_order_item
+AFTER INSERT ON niche_data.order_items
 FOR EACH ROW
-EXECUTE FUNCTION niche_data.fn_log_customer_event('order');
+EXECUTE FUNCTION niche_data.fn_log_customer_event('order_item');
