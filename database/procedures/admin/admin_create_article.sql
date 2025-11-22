@@ -1,3 +1,4 @@
+
 -- Admin Create Article (Add New Product)
 
 CREATE OR REPLACE FUNCTION niche_data.admin_create_article(

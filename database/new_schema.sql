@@ -1,3 +1,4 @@
+
 CREATE SCHEMA IF NOT EXISTS niche_data
     AUTHORIZATION postgres;
 

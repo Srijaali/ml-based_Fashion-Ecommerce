@@ -1,3 +1,4 @@
+
 CREATE OR REPLACE FUNCTION niche_data.fn_log_order_event()
 RETURNS TRIGGER AS $$
 BEGIN
