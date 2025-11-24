@@ -5,7 +5,7 @@ from typing import List
 from app.db.database import get_db
 from app.db.models.customers import Customer
 from app.schemas.customers_schema import(
-    CustomerCreate, CustomerOut,CustomerUpdate,
+    CustomerCreate, CustomerOut,CustomerOrder,
     CustomerResponse,CustomerFeaturesResponse,PurchaseFrequencyResponse,
     CLVResponse,RFMResponse,EventItem
 ) 
@@ -161,14 +161,14 @@ def get_customer_events(customer_id: str, skip: int = 0, limit: int = 100, db: S
 
 
 # Orders summary for a customer (lightweight)
-@router.get("/{customer_id}/orders")
+@router.get("/{customer_id}/orders", response_model=List[CustomerOrder])
 def get_customer_orders(customer_id: str, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     # Simplified order summary — adjust field names if your orders table differs
     sql = text("""
-        SELECT order_id, customer_id, order_status, total_amount, created_at
+        SELECT order_id, customer_id, payment_status, total_amount, order_date,shipping_address
         FROM niche_data.orders
         WHERE customer_id = :cid
-        ORDER BY created_at DESC
+        ORDER BY order_date DESC
         LIMIT :limit OFFSET :skip
     """)
     rows = db.execute(sql, {"cid": customer_id, "skip": skip, "limit": limit}).mappings().all()

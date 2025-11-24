@@ -141,3 +141,13 @@ class EventItem(BaseModel):
     event_timestamp: datetime
 
     model_config = {"from_attributes": True}
+
+class CustomerOrder(BaseModel):
+    order_id: int
+    customer_id: str
+    payment_status: str | None = None
+    total_amount: float | None = None
+    order_date: datetime
+    shipping_address: str | None = None
+
+    model_config = {"from_attributes": True}

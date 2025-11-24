@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.database import Base, engine
 from app.routers import (
+    admins,
     articles,
     categories,
     customers,
@@ -37,7 +38,8 @@ def on_startup():
     Base.metadata.create_all(bind=engine)
 
 
-# ---- Register Routers ----
+# ---- Register Routers ---
+app.include_router(admins.router, prefix="/admins",tags=['Admins'])
 app.include_router(articles.router, prefix="/articles", tags=["Articles"])
 app.include_router(categories.router, prefix="/categories", tags=["Categories"])
 app.include_router(customers.router, prefix="/customers", tags=["Customers"])
@@ -48,7 +50,6 @@ app.include_router(reviews.router, prefix="/reviews", tags=["Reviews"])
 app.include_router(transactions.router, prefix="/transactions", tags=["Transactions"])
 app.include_router(wishlist.router, prefix="/wishlist", tags=["Wishlist"])
 app.include_router(cart.router, prefix="/cart", tags=["Cart"])
-
 
 # ---- Root ----
 @app.get("/")

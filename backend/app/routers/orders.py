@@ -1,32 +1,284 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException,status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List,Optional
+from decimal import Decimal
+from sqlalchemy import text
 from app.db.database import get_db
 from app.db.models.orders import Order
-from app.schemas.orders_schema import OrderCreate, OrderOut
+from app.schemas.orders_schema import (
+    OrderCreate,OrderOut, OrderResponse, OrderDetailResponse, OrderUpdate,
+    OrderListItem, OrderItemResponse, DailySalesItem
+)
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter()
 
 @router.get("/", response_model=List[OrderOut])
 def get_all_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return db.query(Order).offset(skip).limit(limit).all()
+    return db.query(Order).order_by(Order.order_date.desc()).offset(skip).limit(limit).all()
 
 
-@router.get("/{order_id}", response_model=OrderOut)
-def get_order(order_id: str, db: Session = Depends(get_db)):
-    db_order = db.query(Order).filter(Order.order_id == order_id).first()
-    if not db_order:
-        raise HTTPException(status_code=404, detail="Orfer not found")
-    return db_order
+@router.get("/{order_id}/details", response_model=OrderDetailResponse)
+def get_order_details(order_id: int, db: Session = Depends(get_db)):
+    # -------- Order header ----------
+    sql_order = text("""
+        SELECT order_id, customer_id, order_date, total_amount, payment_status, shipping_address
+        FROM niche_data.orders
+        WHERE order_id = :oid
+    """)
+    order = db.execute(sql_order, {"oid": order_id}).mappings().first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
 
-@router.post("/", response_model=OrderOut)
-def add_order(order: OrderCreate, db: Session = Depends(get_db)):
-    db_order = Order(**order.dict())
-    db.add(db_order)
+    # -------- Items ----------
+    sql_items = text("""
+        SELECT order_item_id, order_id, article_id,
+               quantity, unit_price, line_total
+        FROM niche_data.order_items
+        WHERE order_id = :oid
+        ORDER BY order_item_id
+    """)
+    items = db.execute(sql_items, {"oid": order_id}).mappings().all()
+
+    data = dict(order)
+    data["items"] = items
+    return data
+
+@router.get("/customer/{customer_id}", response_model=List[OrderOut])
+def get_orders_for_customer(customer_id: str, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    sql = text("""
+        SELECT *
+        FROM niche_data.orders
+        WHERE customer_id = :cid
+        ORDER BY order_date DESC
+
+    """)
+    return db.execute(sql, {"cid": customer_id, "skip": skip, "limit": limit}).mappings().all()
+
+
+# -------------------------------------------
+#            ADVANCED FILTERS
+# -------------------------------------------
+
+from datetime import datetime
+
+@router.get("/filter", response_model=List[OrderOut])
+def filter_orders(
+    payment_status: Optional[str] = None,
+    min_total: Optional[Decimal] = None,
+    max_total: Optional[Decimal] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    sql = "SELECT * FROM niche_data.orders WHERE 1=1"
+    params = {}
+
+    if payment_status:
+        sql += " AND payment_status = :status"
+        params["status"] = payment_status
+
+    if min_total is not None:
+        sql += " AND total_amount >= :min_total"
+        params["min_total"] = Decimal(min_total)
+
+    if max_total is not None:
+        sql += " AND total_amount <= :max_total"
+        params["max_total"] = Decimal(max_total)
+
+    # parse date strings to timestamps if provided (accepts ISO format)
+    if date_from:
+        try:
+            dt_from = datetime.fromisoformat(date_from)
+        except Exception:
+            raise HTTPException(status_code=400, detail="date_from must be an ISO datetime string")
+        sql += " AND order_date >= :df"
+        params["df"] = dt_from
+
+    if date_to:
+        try:
+            dt_to = datetime.fromisoformat(date_to)
+        except Exception:
+            raise HTTPException(status_code=400, detail="date_to must be an ISO datetime string")
+        sql += " AND order_date <= :dt"
+        params["dt"] = dt_to
+
+    # ordering + pagination
+    sql += " ORDER BY order_date DESC LIMIT :limit OFFSET :skip"
+    params["limit"] = limit
+    params["skip"] = skip
+
+    return db.execute(text(sql), params).mappings().all()
+
+# -------------------------------------------
+#              SALES ANALYTICS
+# -------------------------------------------
+
+@router.get("/analytics/daily-sales", response_model=List[DailySalesItem])
+def get_daily_sales(
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db)
+):
+    # 1) Find first order_date automatically
+    min_date_sql = text("""
+        SELECT MIN(order_date) AS first_date
+        FROM niche_data.orders
+    """)
+    min_row = db.execute(min_date_sql).mappings().first()
+    first_date = min_row["first_date"]
+
+    if first_date is None:
+        return []  # no orders exist
+
+    # 2) Daily sales since first date
+    sql = text("""
+        SELECT DATE(order_date) AS date,
+               COUNT(*) AS total_orders,
+               COALESCE(SUM(total_amount), 0) AS total_revenue
+        FROM niche_data.orders
+        WHERE order_date >= :first_date
+        GROUP BY DATE(order_date)
+        ORDER BY DATE(order_date) DESC
+        LIMIT :limit OFFSET :skip
+    """)
+
+    return db.execute(sql, {
+        "first_date": first_date,
+        "skip": skip,
+        "limit": limit
+    }).mappings().all()
+
+
+
+# -------------------------------------------
+#           CREATE ORDER WITH ITEMS
+#    (WILL WORK AFTER TRIGGER ISSUE FIXED)
+# -------------------------------------------
+#trigger func issue
+@router.post("/create-with-items", response_model=OrderResponse)
+def create_full_order(payload: OrderCreate, db: Session = Depends(get_db)):
+
+    try:
+        # 1. Compute total
+        total_amount = sum(
+            Decimal(i.unit_price) * i.quantity for i in payload.items
+        )
+
+        # 2. Insert order header
+        sql_header = text("""
+            INSERT INTO niche_data.orders (customer_id, order_date, total_amount, payment_status, shipping_address)
+            VALUES (:cid, NOW(), :total, :status, :addr)
+            RETURNING order_id
+        """)
+        order_id = db.execute(sql_header, {
+            "cid": payload.customer_id,
+            "total": total_amount,
+            "status": payload.payment_status,
+            "addr": payload.shipping_address
+        }).scalar()
+
+        # 3. Insert items
+        sql_item = text("""
+            INSERT INTO niche_data.order_items (order_id, article_id, quantity, unit_price)
+            VALUES (:oid, :aid, :qty, :price)
+        """)
+
+        for i in payload.items:
+            db.execute(sql_item, {
+                "oid": order_id,
+                "aid": i.article_id,
+                "qty": i.quantity,
+                "price": i.unit_price
+            })
+
+        db.commit()
+
+        return db.query(Order).filter(Order.order_id == order_id).first()
+
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(400, f"DB integrity error: {str(e)}")
+
+# -------------------------------------------
+#           UPDATE ORDER (E-COMMERCE STYLE)
+# -------------------------------------------
+
+@router.put("/{order_id}/status")
+def update_order_status(order_id: int, payment_status: str, db: Session = Depends(get_db)):
+    sql = text("""
+        UPDATE niche_data.orders
+        SET payment_status = :status
+        WHERE order_id = :oid
+        RETURNING order_id, customer_id, order_date, total_amount, payment_status, shipping_address
+    """)
+    row = db.execute(sql, {"status": payment_status, "oid": order_id}).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found")
     db.commit()
-    db.refresh(db_order)
-    return db_order
+    return {"message": "Status updated", "order": dict(row)}
 
+
+
+@router.put("/{order_id}/address")
+def update_order_address(order_id: int, new_address: str, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.order_id == order_id).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    order.shipping_address = new_address
+    db.commit()
+    db.refresh(order)
+    return {"message": "Address updated", "order": order}
+
+# -------------------------------------------
+#         DELETE ORDER (CANCEL ORDER)
+# -------------------------------------------
+''' CANCEL
+@router.delete("/{order_id}")
+def cancel_order(order_id: int, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.order_id == order_id).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    # optional: cascade delete order items
+    db.execute(text("DELETE FROM niche_data.order_items WHERE order_id = :oid"), {"oid": order_id})
+
+    # cancel order instead of delete
+    db.execute(text("""
+        UPDATE niche_data.orders
+        SET payment_status='cancelled'
+        WHERE order_id = :oid
+    """), {"oid": order_id})
+
+    db.commit()
+    return {"detail": "Order cancelled successfully"}'''
+
+# PERMANENT DEELELTE ORDER ID
+@router.delete("/{order_id}", status_code=200)
+def delete_order(order_id: int, db: Session = Depends(get_db)):
+    # Delete items first (FK dependency)
+    db.execute(
+        text("DELETE FROM niche_data.order_items WHERE order_id = :oid"),
+        {"oid": order_id}
+    )
+
+    # Delete order
+    result = db.execute(
+        text("DELETE FROM niche_data.orders WHERE order_id = :oid"),
+        {"oid": order_id}
+    )
+
+    db.commit()
+
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    return {"detail": f"Order {order_id} permanently deleted"}
+
+'''
 @router.put("/{order_id}", response_model=OrderOut)
 def update_order(order_id: int, order: OrderCreate, db: Session = Depends(get_db)):
     db_order = db.query(Order).filter(Order.order_id == order_id).first()
@@ -46,3 +298,4 @@ def delete_order(order_id: int, db: Session = Depends(get_db)):
     db.delete(db_order)
     db.commit()
     return {"detail": "Order deleted successfully"}
+'''

@@ -12,5 +12,6 @@ class Event(Base):
     customer_id = Column(String(255), ForeignKey("customers.customer_id"))
     article_id = Column(String(255), ForeignKey("articles.article_id"))
     event_type = Column(String(100))
-    campaign_id = Column(Integer, ForeignKey("campaigns.campaign_id"))
+    campaign_id = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
+    order_id = Column(Integer,ForeignKey("orders.order_id"))
