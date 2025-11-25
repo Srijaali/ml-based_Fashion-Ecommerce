@@ -15,8 +15,3 @@ class Admin(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
-    is_superadmin = Column(Boolean, default=False, nullable=False)  # Added for role-based access
-
-    def __repr__(self):
-        return f"<Admin(id={self.admin_id}, username='{self.username}')>"
-

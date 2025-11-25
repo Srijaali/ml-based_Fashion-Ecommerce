@@ -26,16 +26,15 @@ class AdminMe(BaseModel):
 
 # Create admin (request)
 class AdminCreate(BaseModel):
-    username: str
-    email: str
-    password: str = Field(..., max_length=72)
-    is_active: bool = True
-
+    username: str = Field(..., min_length=3)
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+    is_active: Optional[bool] = True
 
 # Login payload
 class AdminLogin(BaseModel):
     username_or_email: str
-    password: str = Field(..., max_length=72)
+    password: str
 
 # Token response
 class TokenResponse(BaseModel):
@@ -47,4 +46,3 @@ class TokenResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str = Field(..., min_length=8)
- 
