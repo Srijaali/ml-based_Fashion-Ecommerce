@@ -13,7 +13,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", "rija-super-secret")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admins/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="admins/token")
 
 
 # -------------- JWT Helpers ----------------

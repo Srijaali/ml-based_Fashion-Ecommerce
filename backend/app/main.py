@@ -15,12 +15,15 @@ from app.routers import (
     wishlist,
     cart,
 )
+from fastapi.security import OAuth2PasswordBearer
+
 
 app = FastAPI(
     title="LAYR API",
     description="FastAPI backend for e-commerce project",
     version="1.0.0"
 )
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="admins/token")
 
 # ---- CORS ----
 origins = ["*"]  # change to specific frontend domains later
