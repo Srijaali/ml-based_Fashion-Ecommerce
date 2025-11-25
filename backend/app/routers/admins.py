@@ -21,9 +21,9 @@ from app.core.auth import (
 router = APIRouter()
 
 
-# ===================================================================
-# 🔹 HELPER: Log admin activity
-# ===================================================================
+# ======================================================================
+# 🔹 Helper: Log admin activity
+# ======================================================================
 def log_admin_action(db: Session, admin_id: int, action: str, details: dict | None = None):
     try:
         details_json = json.dumps(details or {})
@@ -37,24 +37,20 @@ def log_admin_action(db: Session, admin_id: int, action: str, details: dict | No
             "details": details_json
         })
     except Exception as e:
-        print(f"⚠ Logging failed: {e}")
-        # do NOT raise — action should not fail because of logger
+        print(f"Logging failed: {e}")
+        # Do not raise
 
 
-# ===================================================================
-# 🔹 OAUTH2 TOKEN ENDPOINT (Swagger "Authorize" uses this)
-# ===================================================================
+# ======================================================================
+# 🔹 Swagger OAuth2 Token Endpoint
+# ======================================================================
 @router.post("/token", response_model=TokenResponse)
 def token(form_data: OAuth2PasswordRequestForm = Depends(),
           db: Session = Depends(get_db)):
     """
-    Used by Swagger UI “Authorize” popup.
-    Accepts: username + password
-    Validates using DB crypt() function.
+    Endpoint used by Swagger UI "Authorize"
     """
-    sql = text("""
-        SELECT * FROM niche_data.admin_login(:u, :p)
-    """)
+    sql = text("""SELECT * FROM niche_data.admin_login(:u, :p)""")
 
     row = db.execute(sql, {
         "u": form_data.username,
@@ -67,6 +63,49 @@ def token(form_data: OAuth2PasswordRequestForm = Depends(),
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # commit the last_login update inside the function
+    db.commit()
+
+    # fetch updated admin row because last_login_at changed
+    updated_admin = db.query(Admin).filter(Admin.admin_id == row["admin_id"]).first()
+
+    token = create_access_token(row["admin_id"])
+
+    # log the event
+    try:
+        log_admin_action(db, row["admin_id"], "login", None)
+        db.commit()
+    except:
+        db.rollback()
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES
+    }
+
+
+# ======================================================================
+# 🔹 JSON Login (Frontend)
+# ======================================================================
+@router.post("/login", response_model=TokenResponse)
+def login(payload: AdminLogin, db: Session = Depends(get_db)):
+    sql = text("""SELECT * FROM niche_data.admin_login(:u, :p)""")
+
+    row = db.execute(sql, {
+        "u": payload.username_or_email,
+        "p": payload.password
+    }).mappings().first()
+
+    if not row:
+        raise HTTPException(401, "Invalid credentials")
+
+    # commit the last_login update inside the function
+    db.commit()
+
+    # get updated admin row (so last_login_at is instantly correct)
+    updated_admin = db.query(Admin).filter(Admin.admin_id == row["admin_id"]).first()
 
     token = create_access_token(row["admin_id"])
 
@@ -84,54 +123,15 @@ def token(form_data: OAuth2PasswordRequestForm = Depends(),
     }
 
 
-# ===================================================================
-# 🔹 JSON LOGIN (for frontend POST /admins/login)
-# ===================================================================
-@router.post("/login", response_model=TokenResponse)
-def login(payload: AdminLogin, db: Session = Depends(get_db)):
-    """
-    JSON login endpoint for Admin Panel UI or frontend.
-    """
-    sql = text("""
-        SELECT * FROM niche_data.admin_login(:u, :p)
-    """)
-
-    row = db.execute(sql, {
-        "u": payload.username_or_email,
-        "p": payload.password
-    }).mappings().first()
-
-    if not row:
-        raise HTTPException(401, "Invalid credentials")
-
-    token = create_access_token(row["admin_id"])
-
-    # log
-    try:
-        log_admin_action(db, row["admin_id"], "login", None)
-        db.commit()
-    except:
-        db.rollback()
-
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES
-    }
-
-
-# ===================================================================
-# 🔹 CREATE ADMIN (Protected)
-# ===================================================================
+# ======================================================================
+# 🔹 Create Admin (Protected)
+# ======================================================================
 @router.post("/", response_model=AdminOut, status_code=201)
-def create_admin(payload: AdminCreate,
-                 db: Session = Depends(get_db),
-                 current_admin: Admin = Depends(get_current_admin)):
-    """
-    Create a new admin.
-    NOTE: Password hashing done inside DB with crypt().
-    """
-    # check duplicate
+def create_admin(
+    payload: AdminCreate,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
     exists = db.query(Admin).filter(
         (Admin.username == payload.username) |
         (Admin.email == payload.email)
@@ -150,13 +150,16 @@ def create_admin(payload: AdminCreate,
         "u": payload.username,
         "e": payload.email,
         "p": payload.password,
-        "active": payload.is_active,
+        "active": payload.is_active
     }).mappings().first()
 
-    # log
+    db.commit()
+
     try:
-        log_admin_action(db, current_admin.admin_id, "create_admin",
-                         {"created_admin": row["admin_id"]})
+        log_admin_action(
+            db, current_admin.admin_id, "create_admin",
+            {"created_admin": row["admin_id"]}
+        )
         db.commit()
     except:
         db.rollback()
@@ -164,39 +167,40 @@ def create_admin(payload: AdminCreate,
     return row
 
 
-# ===================================================================
-# 🔹 LIST ADMINS (Protected)
-# ===================================================================
+# ======================================================================
+# 🔹 List Admins (Protected)
+# ======================================================================
 @router.get("/", response_model=list[AdminOut])
-def list_admins(db: Session = Depends(get_db),
-                current_admin: Admin = Depends(get_current_admin)):
+def list_admins(
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
     sql = text("""
         SELECT admin_id, username, email, created_at, last_login_at, is_active
-        FROM niche_data.admins
-        ORDER BY admin_id
+        FROM niche_data.admins ORDER BY admin_id
     """)
     return db.execute(sql).mappings().all()
 
 
-# ===================================================================
-# 🔹 ME (Protected)
-# ===================================================================
+# ======================================================================
+# 🔹 Get Own Admin Profile
+# ======================================================================
 @router.get("/me", response_model=AdminMe)
 def me(current_admin: Admin = Depends(get_current_admin)):
     return current_admin
 
 
-# ===================================================================
-# 🔹 CHANGE PASSWORD (Protected)
-# ===================================================================
+# ======================================================================
+# 🔹 Change Password
+# ======================================================================
 @router.post("/change-password")
-def change_password(payload: ChangePasswordRequest,
-                    db: Session = Depends(get_db),
-                    current_admin: Admin = Depends(get_current_admin)):
-    # verify old password using DB
-    sql = text("""
-        SELECT * FROM niche_data.admin_login(:u, :p)
-    """)
+def change_password(
+    payload: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
+    # Check old password via DB function
+    sql = text("""SELECT * FROM niche_data.admin_login(:u, :p)""")
 
     check = db.execute(sql, {
         "u": current_admin.username,
@@ -206,7 +210,7 @@ def change_password(payload: ChangePasswordRequest,
     if not check:
         raise HTTPException(400, "Old password incorrect")
 
-    # update password using crypt()
+    # Update password
     upd = text("""
         UPDATE niche_data.admins
         SET password_hash = crypt(:newp, gen_salt('bf'))
@@ -218,7 +222,6 @@ def change_password(payload: ChangePasswordRequest,
         "aid": current_admin.admin_id
     })
 
-    # log
     try:
         log_admin_action(db, current_admin.admin_id, "change_password", None)
         db.commit()
@@ -228,9 +231,9 @@ def change_password(payload: ChangePasswordRequest,
     return {"detail": "Password changed successfully"}
 
 
-# ===================================================================
-# 🔹 LOGOUT (Client just discards token)
-# ===================================================================
+# ======================================================================
+# 🔹 Logout
+# ======================================================================
 @router.post("/logout")
 def logout(current_admin: Admin = Depends(get_current_admin)):
-    return {"detail": "Logged out. Please discard the token."}
+    return {"detail": "Logged out. Please discard token on client."}

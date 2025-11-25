@@ -19,7 +19,7 @@ class AdminMe(BaseModel):
     admin_id: int
     username: str
     email: str
-    last_login_at: Optional[datetime] = None
+    last_login_at: Optional[datetime] 
     is_active: bool
 
     model_config = {"from_attributes": True}
