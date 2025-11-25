@@ -6,6 +6,7 @@ from app.db.database import get_db
 from app.db.models.articles import Article
 from app.schemas.articles_schema import ArticleCreate, ArticleUpdate, ArticleResponse,    ArticlePerformanceResponse,ArticleDemandTrendResponse,ArticleInventoryResponse,ArticleFunnelMetricsResponse
 from app.actions import products as product_actions
+from app.dependencies import get_current_admin, AdminResponse
 
 
 router = APIRouter()
@@ -53,10 +54,14 @@ def get_article(article_id: str, db: Session = Depends(get_db)):
 
 
 # --------------------------------------------------------
-# CREATE article
+# CREATE article (Admin only)
 # --------------------------------------------------------
 @router.post("/", response_model=ArticleResponse)
-def create_article(payload: ArticleCreate, db: Session = Depends(get_db)):
+def create_article(
+    payload: ArticleCreate, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
     article = Article(**payload.dict())
     db.add(article)
     db.commit()
@@ -65,10 +70,15 @@ def create_article(payload: ArticleCreate, db: Session = Depends(get_db)):
 
 
 # --------------------------------------------------------
-# UPDATE article
+# UPDATE article (Admin only)
 # --------------------------------------------------------
 @router.put("/{article_id}", response_model=ArticleResponse)
-def update_article(article_id: str, payload: ArticleUpdate, db: Session = Depends(get_db)):
+def update_article(
+    article_id: str, 
+    payload: ArticleUpdate, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
     article = db.query(Article).filter(Article.article_id == article_id).first()
 
     if not article:
@@ -83,10 +93,14 @@ def update_article(article_id: str, payload: ArticleUpdate, db: Session = Depend
 
 
 # --------------------------------------------------------
-# DELETE article
+# DELETE article (Admin only)
 # --------------------------------------------------------
 @router.delete("/{article_id}")
-def delete_article(article_id: str, db: Session = Depends(get_db)):
+def delete_article(
+    article_id: str, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
     article = db.query(Article).filter(Article.article_id == article_id).first()
 
     if not article:

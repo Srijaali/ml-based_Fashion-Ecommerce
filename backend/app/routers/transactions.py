@@ -6,6 +6,7 @@ from app.db.models.transactions import Transaction
 from app.schemas.transactions_schema import (
     TransactionCreate, TransactionOut,
     RevenueItem,TransactionBase,TransactionListItem)
+from app.dependencies import get_current_admin, AdminResponse
 from decimal import Decimal
 from sqlalchemy import text
 from datetime import date,datetime
@@ -102,10 +103,14 @@ def transactions_for_article(article_id: str, skip: int = 0, limit: int = 100, d
 
 
 # -------------------------
-# Delete a transaction (admin-only route expected)
+# Delete a transaction (Admin only)
 # -------------------------
 @router.delete("/{transaction_id}", status_code=200)
-def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
+def delete_transaction(
+    transaction_id: int, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
     result = db.execute(text(f"DELETE FROM {TABLE} WHERE transaction_id = :tid"), {"tid": transaction_id})
     db.commit()
     if result.rowcount == 0:

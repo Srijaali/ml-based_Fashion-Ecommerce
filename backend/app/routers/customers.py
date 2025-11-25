@@ -8,7 +8,8 @@ from app.schemas.customers_schema import(
     CustomerCreate, CustomerOut,CustomerOrder,
     CustomerResponse,CustomerFeaturesResponse,PurchaseFrequencyResponse,
     CLVResponse,RFMResponse,EventItem
-) 
+)
+from app.dependencies import get_current_admin, AdminResponse
 
 router = APIRouter()
 
@@ -36,7 +37,13 @@ def create_customer(payload: CustomerCreate, db: Session = Depends(get_db)):
     return db_customer
 
 @router.put("/{customer_id}", response_model=CustomerOut)
-def update_customer(customer_id: str, customer: CustomerCreate, db: Session = Depends(get_db)):
+def update_customer(
+    customer_id: str, 
+    customer: CustomerCreate, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Update customer (Admin only)"""
     db_customer = db.query(Customer).filter(Customer.customer_id == customer_id).first()
     if not db_customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -47,7 +54,12 @@ def update_customer(customer_id: str, customer: CustomerCreate, db: Session = De
     return db_customer
 
 @router.delete("/{customer_id}")
-def delete_customer(customer_id: str, db: Session = Depends(get_db)):
+def delete_customer(
+    customer_id: str, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Delete customer (Admin only)"""
     db_customer = db.query(Customer).filter(Customer.customer_id == customer_id).first()
     if not db_customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -58,10 +70,16 @@ def delete_customer(customer_id: str, db: Session = Depends(get_db)):
 
 
 # ------------------------
-# Activate / Deactivate
+# Activate / Deactivate (Admin only)
 # ------------------------
 @router.put("/{customer_id}/active")
-def set_customer_active(customer_id: str, active: bool, db: Session = Depends(get_db)):
+def set_customer_active(
+    customer_id: str, 
+    active: bool, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Activate/deactivate customer (Admin only)"""
     c = db.query(Customer).filter(Customer.customer_id == customer_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Customer not found")

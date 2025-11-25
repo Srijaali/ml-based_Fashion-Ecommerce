@@ -8,6 +8,81 @@ from app.schemas.wishlist import WishlistCreate, WishlistOut
 
 router = APIRouter()
 
+from fastapi import APIRouter, Depends
+from app.customer_auth import get_current_customer, CustomerResponse
+
+
+
+
+@router.get("/")
+def get_customer_wishlist(
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """Get wishlist for logged-in customer"""
+    wishlist_items = db.execute(
+        text("""
+            SELECT w.wishlist_id, w.article_id, 
+                   a.name, a.price, a.stock
+            FROM wishlist w
+            JOIN articles a ON w.article_id = a.article_id
+            WHERE w.customer_id = :customer_id
+        """),
+        {"customer_id": current_customer.customer_id}
+    ).fetchall()
+    
+    return [
+        {
+            "wishlist_id": item[0],
+            "article_id": item[1],
+            "article_name": item[2],
+            "price": float(item[3]),
+            "stock": item[4]
+        }
+        for item in wishlist_items
+    ]
+
+@router.post("/add")
+def add_to_wishlist(
+    article_id: int,
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """Add item to wishlist (requires authentication)"""
+    
+    # Check if already in wishlist
+    existing = db.execute(
+        text("""
+            SELECT wishlist_id 
+            FROM wishlist 
+            WHERE customer_id = :customer_id AND article_id = :article_id
+        """),
+        {
+            "customer_id": current_customer.customer_id,
+            "article_id": article_id
+        }
+    ).fetchone()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Item already in wishlist")
+    
+    db.execute(
+        text("""
+            INSERT INTO wishlist (customer_id, article_id, created_at)
+            VALUES (:customer_id, :article_id, NOW())
+        """),
+        {
+            "customer_id": current_customer.customer_id,
+            "article_id": article_id
+        }
+    )
+    db.commit()
+    
+    return {"message": "Item added to wishlist"}
+
+
+
+
 @router.get("/", response_model=List[WishlistOut])
 def get_all_wishlist(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return db.query(Wishlist).offset(skip).limit(limit).all()
@@ -21,9 +96,21 @@ def get_wishlist(wishlist_id: str, db: Session = Depends(get_db)):
     return db_wishlist
 
 
-# ---------------- Get wishlist for 1 customer ----------------
+# ---------------- Get wishlist for 1 customer - Customer authenticated ----------------
 @router.get("/customer/{customer_id}", response_model=List[WishlistOut])
-def get_customer_wishlist(customer_id: str, db: Session = Depends(get_db)):
+def get_customer_wishlist_by_id(
+    customer_id: str, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Get wishlist for a specific customer.
+    Customer can only view their own wishlist.
+    """
+    # Ensure customer can only view their own wishlist
+    if str(current_customer.customer_id) != str(customer_id):
+        raise HTTPException(status_code=403, detail="Cannot view another customer's wishlist")
+    
     sql = text("""
         SELECT wishlist_id, customer_id, article_id, added_at
         FROM niche_data.wishlist
@@ -33,9 +120,21 @@ def get_customer_wishlist(customer_id: str, db: Session = Depends(get_db)):
     return db.execute(sql, {"cid": customer_id}).mappings().all()
 
 
-# ---------------- Add item to wishlist ----------------
-@router.post("/", response_model=WishlistOut)
-def add_to_wishlist(payload: WishlistCreate, db: Session = Depends(get_db)):
+# ---------------- Add item to wishlist - Customer authenticated ----------------
+@router.post("/add-item", response_model=WishlistOut)
+def add_to_wishlist_authenticated(
+    payload: WishlistCreate, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Add item to wishlist.
+    Customer can only add items to their own wishlist.
+    """
+    # Ensure customer can only add to their own wishlist
+    if str(payload.customer_id) != str(current_customer.customer_id):
+        raise HTTPException(status_code=403, detail="Cannot add items to another customer's wishlist")
+    
     # 1. Check if already exists
     existing = db.execute(text("""
         SELECT wishlist_id, customer_id, article_id, added_at
@@ -65,7 +164,15 @@ def add_to_wishlist(payload: WishlistCreate, db: Session = Depends(get_db)):
     return inserted
 
 @router.post("/move-to-cart/{wishlist_id}")
-def move_wishlist_to_cart(wishlist_id: int, db: Session = Depends(get_db)):
+def move_wishlist_to_cart(
+    wishlist_id: int, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Move wishlist item to cart.
+    Customer can only move their own wishlist items.
+    """
     # 1. Get wishlist item
     wl = db.execute(
         text("""
@@ -78,6 +185,10 @@ def move_wishlist_to_cart(wishlist_id: int, db: Session = Depends(get_db)):
 
     if not wl:
         raise HTTPException(status_code=404, detail="Wishlist item not found")
+
+    # Ensure customer can only move their own wishlist items
+    if str(wl["customer_id"]) != str(current_customer.customer_id):
+        raise HTTPException(status_code=403, detail="Cannot move another customer's wishlist item")
 
     customer_id = wl["customer_id"]
     article_id = wl["article_id"]
@@ -123,9 +234,29 @@ def move_wishlist_to_cart(wishlist_id: int, db: Session = Depends(get_db)):
 
     return {"detail": "Item moved from wishlist to cart successfully"}
 
-# ---------------- Delete specific wishlist item ----------------
-@router.delete("/{wishlist_id}")
-def delete_wishlist_item(wishlist_id: int, db: Session = Depends(get_db)):
+# ---------------- Delete specific wishlist item - Customer authenticated ----------------
+@router.delete("/item/{wishlist_id}")
+def delete_wishlist_item(
+    wishlist_id: int, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a specific wishlist item.
+    Customer can only delete their own wishlist items.
+    """
+    # Check if wishlist item belongs to current customer
+    wishlist_check = db.execute(
+        text("SELECT customer_id FROM niche_data.wishlist WHERE wishlist_id = :wid"),
+        {"wid": wishlist_id}
+    ).fetchone()
+    
+    if not wishlist_check:
+        raise HTTPException(status_code=404, detail="Wishlist item not found")
+    
+    if str(wishlist_check[0]) != str(current_customer.customer_id):
+        raise HTTPException(status_code=403, detail="Cannot delete another customer's wishlist item")
+    
     row = db.execute(text("""
         DELETE FROM niche_data.wishlist
         WHERE wishlist_id = :wid
@@ -140,9 +271,21 @@ def delete_wishlist_item(wishlist_id: int, db: Session = Depends(get_db)):
     return {"detail": "Wishlist item deleted"}
 
 
-# ---------------- Clear entire wishlist for customer ----------------
+# ---------------- Clear entire wishlist for customer - Customer authenticated ----------------
 @router.delete("/customer/{customer_id}")
-def clear_customer_wishlist(customer_id: str, db: Session = Depends(get_db)):
+def clear_customer_wishlist(
+    customer_id: str, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Clear entire wishlist for a customer.
+    Customer can only clear their own wishlist.
+    """
+    # Ensure customer can only clear their own wishlist
+    if str(current_customer.customer_id) != str(customer_id):
+        raise HTTPException(status_code=403, detail="Cannot clear another customer's wishlist")
+    
     db.execute(text("""
         DELETE FROM niche_data.wishlist
         WHERE customer_id = :cid
@@ -150,13 +293,6 @@ def clear_customer_wishlist(customer_id: str, db: Session = Depends(get_db)):
     
     db.commit()
     return {"detail": "Wishlist cleared"}
-
-
-
-
-
-
-
 
 
 

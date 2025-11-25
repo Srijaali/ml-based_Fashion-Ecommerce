@@ -1,239 +1,252 @@
 # app/routers/admins.py
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from typing import List, Optional
 from datetime import datetime, timedelta
-import json
 
 from app.db.database import get_db
-from app.db.models.admins import Admin
 from app.schemas.admins_schema import (
     AdminCreate, AdminLogin, TokenResponse, AdminOut, AdminMe, ChangePasswordRequest
 )
 from app.core.auth import (
     create_access_token,
     get_current_admin,
-    ACCESS_TOKEN_EXPIRE_MINUTES
+    verify_password,
+    hash_password,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 
-router = APIRouter()
+router = APIRouter(prefix="/admins", tags=["Admins"])
 
 
-# ======================================================================
-# 🔹 Helper: Log admin activity
-# ======================================================================
-def log_admin_action(db: Session, admin_id: int, action: str, details: dict | None = None):
+# ---------------------------
+# Helpers
+# ---------------------------
+def _log_admin_action(db: Session, admin_id: int, action: str, details: Optional[dict] = None):
+    """Write a record in niche_data.admin_activity_log (best-effort)."""
     try:
-        details_json = json.dumps(details or {})
+        details_json = text("to_jsonb(:d::text)")  # placeholder so we pass via params below
         sql = text("""
             INSERT INTO niche_data.admin_activity_log (admin_id, action, details, created_at)
             VALUES (:admin_id, :action, :details::jsonb, NOW())
         """)
-        db.execute(sql, {
-            "admin_id": admin_id,
-            "action": action,
-            "details": details_json
-        })
-    except Exception as e:
-        print(f"Logging failed: {e}")
-        # Do not raise
+        db.execute(sql, {"admin_id": admin_id, "action": action, "details": (details or {})})
+    except Exception:
+        # never fail the main operation because of logging
+        pass
 
 
-# ======================================================================
-# 🔹 Swagger OAuth2 Token Endpoint
-# ======================================================================
-@router.post("/token", response_model=TokenResponse)
-def token(form_data: OAuth2PasswordRequestForm = Depends(),
-          db: Session = Depends(get_db)):
-    """
-    Endpoint used by Swagger UI "Authorize"
-    """
-    sql = text("""SELECT * FROM niche_data.admin_login(:u, :p)""")
-
-    row = db.execute(sql, {
-        "u": form_data.username,
-        "p": form_data.password
-    }).mappings().first()
-
-    if not row:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # commit the last_login update inside the function
-    db.commit()
-
-    # fetch updated admin row because last_login_at changed
-    updated_admin = db.query(Admin).filter(Admin.admin_id == row["admin_id"]).first()
-
-    token = create_access_token(row["admin_id"])
-
-    # log the event
-    try:
-        log_admin_action(db, row["admin_id"], "login", None)
-        db.commit()
-    except:
-        db.rollback()
-
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES
-    }
-
-
-# ======================================================================
-# 🔹 JSON Login (Frontend)
-# ======================================================================
+# ---------------------------
+# Login (JSON) - returns JWT
+# ---------------------------
 @router.post("/login", response_model=TokenResponse)
 def login(payload: AdminLogin, db: Session = Depends(get_db)):
-    sql = text("""SELECT * FROM niche_data.admin_login(:u, :p)""")
+    """
+    JSON login endpoint: accepts username or email + password.
+    - First tries passlib `verify_password` against stored hash.
+    - If that fails or hash format unknown, falls back to DB-side crypt() check (legacy).
+    On success: updates last_login_at and returns JWT.
+    """
+    ident = payload.username_or_email.strip()
 
-    row = db.execute(sql, {
-        "u": payload.username_or_email,
-        "p": payload.password
-    }).mappings().first()
+    # 1) Try to fetch admin row
+    row = db.execute(
+        text("""
+            SELECT admin_id, username, email, password_hash, created_at, last_login_at, is_active
+            FROM niche_data.admins
+            WHERE username = :ident OR email = :ident
+            LIMIT 1
+        """),
+        {"ident": ident}
+    ).mappings().first()
 
     if not row:
-        raise HTTPException(401, "Invalid credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    # commit the last_login update inside the function
+    # 2) Verify password locally (passlib). If that fails, attempt DB crypt() fallback.
+    stored_hash = row["password_hash"]
+    ok = False
+
+    try:
+        # preferred: passlib verification (handles bcrypt and other modern hashes)
+        ok = verify_password(payload.password, stored_hash)
+    except Exception:
+        ok = False
+
+    if not ok:
+        # fallback to DB crypt() comparison (legacy stored using crypt)
+        fallback = db.execute(
+            text("""
+                SELECT admin_id, username, email, created_at, last_login_at, is_active
+                FROM niche_data.admins
+                WHERE (username = :ident OR email = :ident)
+                  AND password_hash = crypt(:pwd, password_hash)
+                  AND is_active = TRUE
+                LIMIT 1
+            """),
+            {"ident": ident, "pwd": payload.password}
+        ).mappings().first()
+        if fallback:
+            ok = True
+            row = fallback  # use the row from fallback (same data)
+
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    if not row["is_active"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin inactive")
+
+    admin_id = row["admin_id"]
+
+    # Update last_login_at
+    db.execute(
+        text("UPDATE niche_data.admins SET last_login_at = NOW() WHERE admin_id = :aid"),
+        {"aid": admin_id}
+    )
     db.commit()
 
-    # get updated admin row (so last_login_at is instantly correct)
-    updated_admin = db.query(Admin).filter(Admin.admin_id == row["admin_id"]).first()
-
-    token = create_access_token(row["admin_id"])
-
-    # log login
+    # Log login
     try:
-        log_admin_action(db, row["admin_id"], "login", None)
-        db.commit()
-    except:
-        db.rollback()
+        _log_admin_action(db, admin_id, "login", None)
+    except Exception:
+        pass
 
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES
-    }
+    # Create token with admin_id (will be converted to {"sub": str(admin_id), "type": "admin"})
+    token = create_access_token(admin_id, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    return {"access_token": token, "token_type": "bearer", "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES}
 
 
-# ======================================================================
-# 🔹 Create Admin (Protected)
-# ======================================================================
-@router.post("/", response_model=AdminOut, status_code=201)
-def create_admin(
-    payload: AdminCreate,
-    db: Session = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
-):
-    exists = db.query(Admin).filter(
-        (Admin.username == payload.username) |
-        (Admin.email == payload.email)
-    ).first()
+# ---------------------------
+# Create admin (protected)
+# ---------------------------
+@router.post("/", response_model=AdminOut, status_code=status.HTTP_201_CREATED)
+def create_admin(payload: AdminCreate, db: Session = Depends(get_db), current_admin = Depends(get_current_admin)):
+    """
+    Create a new admin. Protected: requires an authenticated admin.
+    Uses passlib hashing for new accounts.
+    """
+    # uniqueness check
+    exists = db.execute(
+        text("SELECT 1 FROM niche_data.admins WHERE username = :u OR email = :e LIMIT 1"),
+        {"u": payload.username, "e": payload.email}
+    ).scalar()
 
     if exists:
-        raise HTTPException(400, "Username or email already exists")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username or email already exists")
 
-    sql = text("""
-        INSERT INTO niche_data.admins (username, email, password_hash, created_at, is_active)
-        VALUES (:u, :e, crypt(:p, gen_salt('bf')), NOW(), :active)
-        RETURNING admin_id, username, email, created_at, last_login_at, is_active
-    """)
+    hashed = hash_password(payload.password)
 
-    row = db.execute(sql, {
-        "u": payload.username,
-        "e": payload.email,
-        "p": payload.password,
-        "active": payload.is_active
-    }).mappings().first()
+    row = db.execute(
+        text("""
+            INSERT INTO niche_data.admins (username, email, password_hash, created_at, is_active)
+            VALUES (:u, :e, :ph, NOW(), :active)
+            RETURNING admin_id, username, email, created_at, last_login_at, is_active
+        """),
+        {"u": payload.username, "e": payload.email, "ph": hashed, "active": bool(payload.is_active)}
+    ).mappings().first()
 
     db.commit()
 
+    # log creation
     try:
-        log_admin_action(
-            db, current_admin.admin_id, "create_admin",
-            {"created_admin": row["admin_id"]}
-        )
-        db.commit()
-    except:
-        db.rollback()
+        _log_admin_action(db, current_admin.admin_id, "create_admin", {"created_admin": row["admin_id"]})
+    except Exception:
+        pass
 
     return row
 
 
-# ======================================================================
-# 🔹 List Admins (Protected)
-# ======================================================================
-@router.get("/", response_model=list[AdminOut])
-def list_admins(
-    db: Session = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
-):
-    sql = text("""
-        SELECT admin_id, username, email, created_at, last_login_at, is_active
-        FROM niche_data.admins ORDER BY admin_id
-    """)
-    return db.execute(sql).mappings().all()
+# ---------------------------
+# List admins (protected)
+# ---------------------------
+@router.get("/", response_model=List[AdminOut])
+def list_admins(db: Session = Depends(get_db), current_admin = Depends(get_current_admin)):
+    rows = db.execute(
+        text("""
+            SELECT admin_id, username, email, created_at, last_login_at, is_active
+            FROM niche_data.admins
+            ORDER BY admin_id
+            LIMIT 1000
+        """)
+    ).mappings().all()
+    return rows
 
 
-# ======================================================================
-# 🔹 Get Own Admin Profile
-# ======================================================================
+# ---------------------------
+# Get me (protected)
+# ---------------------------
 @router.get("/me", response_model=AdminMe)
-def me(current_admin: Admin = Depends(get_current_admin)):
-    return current_admin
+def me(current_admin = Depends(get_current_admin)):
+    """
+    Get current admin info.
+    current_admin is a SQLAlchemy Admin model, which will be converted to AdminMe Pydantic model.
+    """
+    # Convert SQLAlchemy Admin model to AdminMe Pydantic model
+    return AdminMe(
+        admin_id=current_admin.admin_id,
+        username=current_admin.username,
+        email=current_admin.email,
+        last_login_at=current_admin.last_login_at,
+        is_active=current_admin.is_active
+    )
 
 
-# ======================================================================
-# 🔹 Change Password
-# ======================================================================
+# ---------------------------
+# Change password (protected)
+# ---------------------------
 @router.post("/change-password")
-def change_password(
-    payload: ChangePasswordRequest,
-    db: Session = Depends(get_db),
-    current_admin: Admin = Depends(get_current_admin)
-):
-    # Check old password via DB function
-    sql = text("""SELECT * FROM niche_data.admin_login(:u, :p)""")
+def change_password(payload: ChangePasswordRequest, db: Session = Depends(get_db), current_admin = Depends(get_current_admin)):
+    # verify old password (try passlib then DB crypt fallback)
+    ident = current_admin.username
+    # first try passlib verify against stored hash
+    stored = db.execute(text("SELECT password_hash FROM niche_data.admins WHERE admin_id = :aid"), {"aid": current_admin.admin_id}).scalar()
+    if not stored:
+        raise HTTPException(status_code=400, detail="Admin record missing")
 
-    check = db.execute(sql, {
-        "u": current_admin.username,
-        "p": payload.old_password
-    }).mappings().first()
+    ok = verify_password(payload.old_password, stored)
+    if not ok:
+        # fallback DB crypt check
+        chk = db.execute(
+            text("""
+                SELECT 1 FROM niche_data.admins
+                WHERE admin_id = :aid AND password_hash = crypt(:pwd, password_hash)
+            """),
+            {"aid": current_admin.admin_id, "pwd": payload.old_password}
+        ).scalar()
+        ok = bool(chk)
 
-    if not check:
-        raise HTTPException(400, "Old password incorrect")
+    if not ok:
+        raise HTTPException(status_code=400, detail="Old password incorrect")
 
-    # Update password
-    upd = text("""
-        UPDATE niche_data.admins
-        SET password_hash = crypt(:newp, gen_salt('bf'))
-        WHERE admin_id = :aid
-    """)
+    new_hashed = hash_password(payload.new_password)
+    db.execute(
+        text("UPDATE niche_data.admins SET password_hash = :ph WHERE admin_id = :aid"),
+        {"ph": new_hashed, "aid": current_admin.admin_id}
+    )
+    db.commit()
 
-    db.execute(upd, {
-        "newp": payload.new_password,
-        "aid": current_admin.admin_id
-    })
-
+    # Log change
     try:
-        log_admin_action(db, current_admin.admin_id, "change_password", None)
-        db.commit()
-    except:
-        db.rollback()
+        _log_admin_action(db, current_admin.admin_id, "change_password", None)
+    except Exception:
+        pass
 
     return {"detail": "Password changed successfully"}
 
 
-# ======================================================================
-# 🔹 Logout
-# ======================================================================
-@router.post("/logout")
-def logout(current_admin: Admin = Depends(get_current_admin)):
-    return {"detail": "Logged out. Please discard token on client."}
+# ---------------------------
+# Simple admin activity logs view (protected)
+# ---------------------------
+@router.get("/logs")
+def get_admin_logs(limit: int = 100, db: Session = Depends(get_db), current_admin = Depends(get_current_admin)):
+    rows = db.execute(
+        text("""
+            SELECT log_id, admin_id, action, details, created_at
+            FROM niche_data.admin_activity_log
+            ORDER BY created_at DESC
+            LIMIT :limit
+        """),
+        {"limit": limit}
+    ).mappings().all()
+    return rows

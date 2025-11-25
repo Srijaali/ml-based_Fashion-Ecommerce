@@ -13,15 +13,136 @@ from app.schemas.cart import (
 )
 router = APIRouter()
 
-@router.get("/", response_model=List[CartItemBase])
+
+from fastapi import APIRouter, Depends
+from app.customer_auth import get_current_customer, CustomerResponse
+
+
+
+@router.get("/")
+def get_customer_cart(
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """Get cart for logged-in customer"""
+    cart_items = db.execute(
+        text("""
+            SELECT c.cart_id, c.article_id, c.quantity, 
+                   a.name, a.price, a.stock
+            FROM cart c
+            JOIN articles a ON c.article_id = a.article_id
+            WHERE c.customer_id = :customer_id
+        """),
+        {"customer_id": current_customer.customer_id}
+    ).fetchall()
+    
+    return [
+        {
+            "cart_id": item[0],
+            "article_id": item[1],
+            "quantity": item[2],
+            "article_name": item[3],
+            "price": float(item[4]),
+            "stock": item[5]
+        }
+        for item in cart_items
+    ]
+
+@router.post("/add")
+def add_to_cart(
+    article_id: int,
+    quantity: int,
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """Add item to cart (requires authentication)"""
+    
+    # Check if item already in cart
+    existing = db.execute(
+        text("""
+            SELECT cart_id, quantity 
+            FROM cart 
+            WHERE customer_id = :customer_id AND article_id = :article_id
+        """),
+        {
+            "customer_id": current_customer.customer_id,
+            "article_id": article_id
+        }
+    ).fetchone()
+    
+    if existing:
+        # Update quantity
+        db.execute(
+            text("""
+                UPDATE cart 
+                SET quantity = quantity + :quantity, updated_at = NOW()
+                WHERE cart_id = :cart_id
+            """),
+            {"cart_id": existing[0], "quantity": quantity}
+        )
+    else:
+        # Insert new item
+        db.execute(
+            text("""
+                INSERT INTO cart (customer_id, article_id, quantity, created_at, updated_at)
+                VALUES (:customer_id, :article_id, :quantity, NOW(), NOW())
+            """),
+            {
+                "customer_id": current_customer.customer_id,
+                "article_id": article_id,
+                "quantity": quantity
+            }
+        )
+    
+    db.commit()
+    return {"message": "Item added to cart"}
+
+@router.delete("/{cart_id}")
+def remove_from_cart(
+    cart_id: int,
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """Remove item from cart (requires authentication)"""
+    
+    # Verify cart belongs to customer
+    cart = db.execute(
+        text("SELECT customer_id FROM cart WHERE cart_id = :cart_id"),
+        {"cart_id": cart_id}
+    ).fetchone()
+    
+    if not cart or cart[0] != current_customer.customer_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    db.execute(
+        text("DELETE FROM cart WHERE cart_id = :cart_id"),
+        {"cart_id": cart_id}
+    )
+    db.commit()
+    
+    return {"message": "Item removed from cart"}
+
+
+# Admin-only endpoint to get all carts
+@router.get("/all", response_model=List[CartItemBase])
 def get_all_cart(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    """Get all carts (Admin only - no auth for now, but should be added)"""
     return db.query(Cart).offset(skip).limit(limit).all()
 
-@router.get("/{customer_id}", response_model=CartResponse)
-def get_cart(customer_id: str, db: Session = Depends(get_db)):
+@router.get("/customer/{customer_id}", response_model=CartResponse)
+def get_cart(
+    customer_id: str, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
     """
     Return full cart for a customer (all items).
+    Customer can only view their own cart.
     """
+    # Ensure customer can only view their own cart
+    if str(current_customer.customer_id) != str(customer_id):
+        raise HTTPException(status_code=403, detail="Cannot view another customer's cart")
+    
     sql = text("""
         SELECT cart_id, customer_id, article_id, quantity, added_at
         FROM niche_data.cart
@@ -32,14 +153,23 @@ def get_cart(customer_id: str, db: Session = Depends(get_db)):
     return {"customer_id": customer_id, "items": rows}
 
 
-# Add item to cart (merge if exists)
+# Add item to cart (merge if exists) - Customer authenticated
 # -------------------------
-@router.post("/", response_model=CartItemOut, status_code=status.HTTP_201_CREATED)
-def add_to_cart(payload: CartItemCreate, db: Session = Depends(get_db)):
+@router.post("/add-item", response_model=CartItemOut, status_code=status.HTTP_201_CREATED)
+def add_to_cart_authenticated(
+    payload: CartItemCreate, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
     """
     Add an item to cart. If the same article already exists in the customer's cart,
     the quantity will be incremented (merged). Returns the upserted cart row.
+    Customer can only add items to their own cart.
     """
+    # Ensure customer can only add to their own cart
+    if str(payload.customer_id) != str(current_customer.customer_id):
+        raise HTTPException(status_code=403, detail="Cannot add items to another customer's cart")
+    
     try:
         with db.begin():
             # check existing
@@ -80,13 +210,31 @@ def add_to_cart(payload: CartItemCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(e))
 
 # -------------------------
-# Update quantity for a cart item
+# Update quantity for a cart item - Customer authenticated
 # ------------------------- edits existing cart item
 @router.put("/{cart_id}", response_model=CartItemOut)
-def update_cart_item(cart_id: int, payload: CartItemUpdate, db: Session = Depends(get_db)):
+def update_cart_item(
+    cart_id: int, 
+    payload: CartItemUpdate, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
     """
     Update the quantity for a cart item by cart_id.
+    Customer can only update their own cart items.
     """
+    # Check if cart item belongs to current customer
+    cart_check = db.execute(
+        text("SELECT customer_id FROM niche_data.cart WHERE cart_id = :cid"),
+        {"cid": cart_id}
+    ).fetchone()
+    
+    if not cart_check:
+        raise HTTPException(status_code=404, detail="Cart item not found")
+    
+    if str(cart_check[0]) != str(current_customer.customer_id):
+        raise HTTPException(status_code=403, detail="Cannot update another customer's cart item")
+    
     sql = text("""
         UPDATE niche_data.cart
         SET quantity = :qty, added_at = NOW()
@@ -101,29 +249,29 @@ def update_cart_item(cart_id: int, payload: CartItemUpdate, db: Session = Depend
 
 
 # -------------------------
-# Remove an item from cart
+# Remove an item from cart - Customer authenticated (already has auth in earlier endpoint)
 # -------------------------
-@router.delete("/{cart_id}")
-def remove_cart_item(cart_id: int, db: Session = Depends(get_db)):
-    """
-    Delete a cart by cart_id.
-    """
-    sql = text("DELETE FROM niche_data.cart WHERE cart_id = :cid RETURNING cart_id")
-    row = db.execute(sql, {"cid": cart_id}).mappings().first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Cart item not found")
-    db.commit()
-    return {"detail": "Cart removed", "cart_id": row["cart_id"]}
+# The earlier delete endpoint already has authentication, so this one is kept for compatibility
+# but should use the authenticated one above
 
 
 # -------------------------
-# Clear full cart for a customer
+# Clear full cart for a customer - Customer authenticated
 # -------------------------
 @router.delete("/clear/{customer_id}")
-def clear_cart(customer_id: str, db: Session = Depends(get_db)):
+def clear_cart(
+    customer_id: str, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
     """
     Remove all items from a customer's cart.
+    Customer can only clear their own cart.
     """
+    # Ensure customer can only clear their own cart
+    if str(current_customer.customer_id) != str(customer_id):
+        raise HTTPException(status_code=403, detail="Cannot clear another customer's cart")
+    
     sql = text("DELETE FROM niche_data.cart WHERE customer_id = :cid RETURNING count(*)")
     # Note: returning count(*) from DELETE is not standard; do a separate count if needed
     deleted = db.execute(text("DELETE FROM niche_data.cart WHERE customer_id = :cid"), {"cid": customer_id})
@@ -133,10 +281,22 @@ def clear_cart(customer_id: str, db: Session = Depends(get_db)):
 
 
 # -------------------------
-# Cart item count quick endpoint
+# Cart item count quick endpoint - Customer authenticated
 # -------------------------
 @router.get("/{customer_id}/count")
-def cart_count(customer_id: str, db: Session = Depends(get_db)):
+def cart_count(
+    customer_id: str, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Get cart item count for a customer.
+    Customer can only view their own cart count.
+    """
+    # Ensure customer can only view their own cart count
+    if str(current_customer.customer_id) != str(customer_id):
+        raise HTTPException(status_code=403, detail="Cannot view another customer's cart count")
+    
     sql = text("""
         SELECT COALESCE(SUM(quantity),0) AS total_items, COUNT(*) AS rows
         FROM niche_data.cart

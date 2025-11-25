@@ -10,8 +10,123 @@ from app.schemas.orders_schema import (
     OrderListItem, OrderItemResponse, DailySalesItem
 )
 from sqlalchemy.exc import IntegrityError
-
+from fastapi import APIRouter, Depends
+from app.customer_auth import get_current_customer, CustomerResponse
 router = APIRouter()
+
+
+@router.get("/my-orders")
+def get_my_orders(
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """Get all orders for logged-in customer"""
+    orders = db.execute(
+        text("""
+            SELECT order_id, total_amount, status, 
+                   shipping_address, created_at
+            FROM orders
+            WHERE customer_id = :customer_id
+            ORDER BY created_at DESC
+        """),
+        {"customer_id": current_customer.customer_id}
+    ).fetchall()
+    
+    return [
+        {
+            "order_id": order[0],
+            "total_amount": float(order[1]),
+            "status": order[2],
+            "shipping_address": order[3],
+            "created_at": order[4]
+        }
+        for order in orders
+    ]
+
+@router.post("/create")
+def create_order(
+    shipping_address: str,
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """Create order from cart (requires authentication)"""
+    
+    # Get cart items
+    cart_items = db.execute(
+        text("""
+            SELECT c.article_id, c.quantity, a.price
+            FROM cart c
+            JOIN articles a ON c.article_id = a.article_id
+            WHERE c.customer_id = :customer_id
+        """),
+        {"customer_id": current_customer.customer_id}
+    ).fetchall()
+    
+    if not cart_items:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+    
+    # Calculate total
+    total_amount = sum(item[2] * item[1] for item in cart_items)
+    
+    # Create order
+    order_result = db.execute(
+        text("""
+            INSERT INTO orders (
+                customer_id, total_amount, status, 
+                shipping_address, created_at, updated_at
+            )
+            VALUES (
+                :customer_id, :total_amount, 'pending', 
+                :shipping_address, NOW(), NOW()
+            )
+            RETURNING order_id
+        """),
+        {
+            "customer_id": current_customer.customer_id,
+            "total_amount": total_amount,
+            "shipping_address": shipping_address
+        }
+    ).fetchone()
+    
+    order_id = order_result[0]
+    
+    # Create order items
+    for item in cart_items:
+        db.execute(
+            text("""
+                INSERT INTO order_items (
+                    order_id, article_id, quantity, 
+                    price_at_time, created_at
+                )
+                VALUES (
+                    :order_id, :article_id, :quantity, 
+                    :price, NOW()
+                )
+            """),
+            {
+                "order_id": order_id,
+                "article_id": item[0],
+                "quantity": item[1],
+                "price": item[2]
+            }
+        )
+    
+    # Clear cart
+    db.execute(
+        text("DELETE FROM cart WHERE customer_id = :customer_id"),
+        {"customer_id": current_customer.customer_id}
+    )
+    
+    db.commit()
+    
+    return {
+        "order_id": order_id,
+        "total_amount": total_amount,
+        "message": "Order created successfully"
+    }
+
+
+
 
 @router.get("/", response_model=List[OrderOut])
 def get_all_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
@@ -19,7 +134,15 @@ def get_all_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db
 
 
 @router.get("/{order_id}/details", response_model=OrderDetailResponse)
-def get_order_details(order_id: int, db: Session = Depends(get_db)):
+def get_order_details(
+    order_id: int, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Get order details.
+    Customer can only view their own order details.
+    """
     # -------- Order header ----------
     sql_order = text("""
         SELECT order_id, customer_id, order_date, total_amount, payment_status, shipping_address
@@ -29,6 +152,10 @@ def get_order_details(order_id: int, db: Session = Depends(get_db)):
     order = db.execute(sql_order, {"oid": order_id}).mappings().first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    # Ensure customer can only view their own orders
+    if str(order["customer_id"]) != str(current_customer.customer_id):
+        raise HTTPException(status_code=403, detail="Cannot view another customer's order")
 
     # -------- Items ----------
     sql_items = text("""
@@ -45,7 +172,21 @@ def get_order_details(order_id: int, db: Session = Depends(get_db)):
     return data
 
 @router.get("/customer/{customer_id}", response_model=List[OrderOut])
-def get_orders_for_customer(customer_id: str, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_orders_for_customer(
+    customer_id: str, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db)
+):
+    """
+    Get orders for a specific customer.
+    Customer can only view their own orders.
+    """
+    # Ensure customer can only view their own orders
+    if str(current_customer.customer_id) != str(customer_id):
+        raise HTTPException(status_code=403, detail="Cannot view another customer's orders")
+    
     sql = text("""
         SELECT *
         FROM niche_data.orders
@@ -159,7 +300,18 @@ def get_daily_sales(
 # -------------------------------------------
 #trigger func issue
 @router.post("/create-with-items", response_model=OrderResponse)
-def create_full_order(payload: OrderCreate, db: Session = Depends(get_db)):
+def create_full_order(
+    payload: OrderCreate, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a full order with items.
+    Customer can only create orders for themselves.
+    """
+    # Ensure customer can only create orders for themselves
+    if str(payload.customer_id) != str(current_customer.customer_id):
+        raise HTTPException(status_code=403, detail="Cannot create orders for another customer")
 
     try:
         # 1. Compute total
@@ -207,7 +359,28 @@ def create_full_order(payload: OrderCreate, db: Session = Depends(get_db)):
 # -------------------------------------------
 
 @router.put("/{order_id}/status")
-def update_order_status(order_id: int, payment_status: str, db: Session = Depends(get_db)):
+def update_order_status(
+    order_id: int, 
+    payment_status: str, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Update order status.
+    Customer can only update their own orders (typically to cancel).
+    """
+    # Check if order belongs to current customer
+    order_check = db.execute(
+        text("SELECT customer_id FROM niche_data.orders WHERE order_id = :oid"),
+        {"oid": order_id}
+    ).fetchone()
+    
+    if not order_check:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if str(order_check[0]) != str(current_customer.customer_id):
+        raise HTTPException(status_code=403, detail="Cannot update another customer's order")
+    
     sql = text("""
         UPDATE niche_data.orders
         SET payment_status = :status
@@ -223,10 +396,23 @@ def update_order_status(order_id: int, payment_status: str, db: Session = Depend
 
 
 @router.put("/{order_id}/address")
-def update_order_address(order_id: int, new_address: str, db: Session = Depends(get_db)):
+def update_order_address(
+    order_id: int, 
+    new_address: str, 
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """
+    Update order shipping address.
+    Customer can only update their own orders.
+    """
     order = db.query(Order).filter(Order.order_id == order_id).first()
     if not order:
         raise HTTPException(404, "Order not found")
+
+    # Ensure customer can only update their own orders
+    if str(order.customer_id) != str(current_customer.customer_id):
+        raise HTTPException(403, "Cannot update another customer's order")
 
     order.shipping_address = new_address
     db.commit()
@@ -236,7 +422,7 @@ def update_order_address(order_id: int, new_address: str, db: Session = Depends(
 # -------------------------------------------
 #         DELETE ORDER (CANCEL ORDER)
 # -------------------------------------------
-''' CANCEL
+'''CANCEL
 @router.delete("/{order_id}")
 def cancel_order(order_id: int, db: Session = Depends(get_db)):
     order = db.query(Order).filter(Order.order_id == order_id).first()
@@ -255,7 +441,7 @@ def cancel_order(order_id: int, db: Session = Depends(get_db)):
 
     db.commit()
     return {"detail": "Order cancelled successfully"}'''
-
+'''
 # PERMANENT DEELELTE ORDER ID
 @router.delete("/{order_id}", status_code=200)
 def delete_order(order_id: int, db: Session = Depends(get_db)):
@@ -278,6 +464,7 @@ def delete_order(order_id: int, db: Session = Depends(get_db)):
 
     return {"detail": f"Order {order_id} permanently deleted"}
 
+'''
 '''
 @router.put("/{order_id}", response_model=OrderOut)
 def update_order(order_id: int, order: OrderCreate, db: Session = Depends(get_db)):

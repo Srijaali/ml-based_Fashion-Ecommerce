@@ -15,6 +15,7 @@ from app.routers import (
     wishlist,
     cart,
 )
+from app.customer_auth import router as customer_auth_router
 from fastapi.security import OAuth2PasswordBearer
 
 
@@ -42,7 +43,8 @@ def on_startup():
 
 
 # ---- Register Routers ---
-app.include_router(admins.router, prefix="/admins",tags=['Admins'])
+app.include_router(admins.router)  # Router already has /admins prefix defined
+app.include_router(customer_auth_router)  # Customer auth routes (already has /customers/auth prefix)
 app.include_router(articles.router, prefix="/articles", tags=["Articles"])
 app.include_router(categories.router, prefix="/categories", tags=["Categories"])
 app.include_router(customers.router, prefix="/customers", tags=["Customers"])

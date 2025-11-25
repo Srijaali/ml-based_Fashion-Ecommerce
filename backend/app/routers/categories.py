@@ -14,6 +14,7 @@ from app.schemas.categories_schema import (
     CategoryPerformanceResponse
 )
 from app.schemas.articles_schema import ArticleResponse
+from app.dependencies import get_current_admin, AdminResponse
 
 
 router = APIRouter()
@@ -115,9 +116,13 @@ def get_category_by_name(Name: str, db: Session = Depends(get_db)):
     return db_category
 
 
-# CREATE
+# CREATE (Admin only)
 @router.post("/", response_model=CategoryOut)
-def add_category(category: CategoryCreate, db: Session = Depends(get_db)):
+def add_category(
+    category: CategoryCreate, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
     if category.parent_category_id:
         parent = db.query(Category).filter(
             Category.category_id == category.parent_category_id
@@ -132,9 +137,14 @@ def add_category(category: CategoryCreate, db: Session = Depends(get_db)):
     return db_category
 
 
-# UPDATE
+# UPDATE (Admin only)
 @router.put("/{id}", response_model=CategoryOut)
-def update_category(id: int, category: CategoryCreate, db: Session = Depends(get_db)):
+def update_category(
+    id: int, 
+    category: CategoryCreate, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
     db_category = db.query(Category).filter(Category.category_id == id).first()
     if not db_category:
         raise HTTPException(status_code=404, detail="Category not found")
@@ -159,9 +169,13 @@ def update_category(id: int, category: CategoryCreate, db: Session = Depends(get
     return db_category
 
 
-# DELETE
+# DELETE (Admin only)
 @router.delete("/{id}")
-def delete_category(id: int, db: Session = Depends(get_db)):
+def delete_category(
+    id: int, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
     db_category = db.query(Category).filter(Category.category_id == id).first()
     if not db_category:
         raise HTTPException(status_code=404, detail="Category not found")

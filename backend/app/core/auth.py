@@ -1,76 +1,174 @@
 # app/core/auth.py
+
 import os
-import jwt
 from datetime import datetime, timedelta
-from fastapi import HTTPException, status, Depends
-from fastapi.security import OAuth2PasswordBearer
+from typing import Optional, Dict, Any, Union
+
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
+from passlib.context import CryptContext
 
 from app.db.database import get_db
 from app.db.models.admins import Admin
-# at top of app/core/auth.py
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-# replace oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admins/token")
-# with:
-bearer_scheme = HTTPBearer()   # used by Swagger to show single "Bearer <token>" box
 
-JWT_SECRET = os.getenv("JWT_SECRET", "rija-super-secret")
+# ============================================================
+#  CONFIG
+# ============================================================
+
+JWT_SECRET = os.getenv("JWT_SECRET", os.getenv("SECRET_KEY", "supersecret-key-change-in-prod"))
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-#oauth2_scheme = OAuth2PasswordBearer(tokenUrl="admins/token")
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-# -------------- JWT Helpers ----------------
+# ============================================================
+#  SECURITY SCHEME (Swagger uses this → shows single Bearer box)
+# ============================================================
 
-def create_access_token(admin_id: int):
+auth_scheme = HTTPBearer()
+
+
+# ============================================================
+#  PASSWORD HASHING
+# ============================================================
+
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt."""
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against a hash."""
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+# ============================================================
+#  JWT CREATION
+# ============================================================
+
+def create_access_token(
+    data: Union[Dict[str, Any], int, str],
+    expires_delta: Optional[timedelta] = None
+) -> str:
+    """
+    Creates a JWT token.
+    Accepts either:
+    - A dict → e.g. {"sub": "9", "type": "admin"}
+    - An int/str (admin_id) → will create {"sub": str(admin_id), "type": "admin"}
+    """
+    if isinstance(data, (int, str)):
+        # If admin_id is passed directly, create the payload
+        to_encode = {"sub": str(data), "type": "admin"}
+    else:
+        # If dict is passed, use it (but ensure type is set)
+        to_encode = data.copy()
+        if "type" not in to_encode:
+            to_encode["type"] = "admin"
+    
     now = datetime.utcnow()
-    payload = {
-        "sub": str(admin_id),
-        "iat": now,
-        "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+    if expires_delta:
+        expire = now + expires_delta
+    else:
+        expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    to_encode.update({"iat": now, "exp": expire})
+
+    encoded = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded
 
 
-def decode_token(token: str):
+# ============================================================
+#  JWT DECODING
+# ============================================================
+
+def decode_access_token(token: str) -> dict:
+    """
+    Decodes the JWT token and returns its payload.
+    """
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload
 
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+# ============================================================
+#  CURRENT ADMIN DEPENDENCY
+# ============================================================
 
 def get_current_admin(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    credentials=Depends(auth_scheme),
     db: Session = Depends(get_db)
-) -> Admin:
+):
     """
-    Accepts an HTTP Bearer token from Authorization header (Swagger will show a simple Bearer input).
+    Extracts admin from Bearer token.
+    Used in protected admin endpoints.
+    Returns Admin model (SQLAlchemy) which can be converted to AdminMe Pydantic model.
     """
-    token = credentials.credentials if credentials else None
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
 
-    payload = decode_token(token)
+    token = credentials.credentials  # raw JWT string
+    payload = decode_access_token(token)
 
     admin_id = payload.get("sub")
+    token_type = payload.get("type")
+
     if not admin_id:
-        raise HTTPException(status_code=401, detail="Invalid token: missing subject")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: missing subject",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Verify token type is admin
+    if token_type != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     try:
         admin_id_int = int(admin_id)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=401, detail="Invalid token: malformed subject")
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: subject must be integer",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
+    # Fetch admin from DB
     admin = db.query(Admin).filter(Admin.admin_id == admin_id_int).first()
+
     if not admin:
-        raise HTTPException(status_code=401, detail="Admin not found")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     if not admin.is_active:
-        raise HTTPException(status_code=403, detail="Admin account is inactive")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin account is inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     return admin
-
