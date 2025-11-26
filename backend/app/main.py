@@ -3,7 +3,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from app.db.database import Base, engine
-from app.routers import admins, articles, cart, categories, customers, events, order_items, orders, reviews, sections, transactions, wishlist
+from app.routers import (
+    admins,
+    articles,
+    categories,
+    customers,
+    events,
+    orders,
+    order_items,
+    reviews,
+    transactions,
+    wishlist,
+    cart,
+)
 from app.customer_auth import router as customer_auth_router
 
 
@@ -42,7 +54,6 @@ app.include_router(reviews.router, prefix="/reviews", tags=["Reviews"])
 app.include_router(transactions.router, prefix="/transactions", tags=["Transactions"])
 app.include_router(wishlist.router, prefix="/wishlist", tags=["Wishlist"])
 app.include_router(cart.router, prefix="/cart", tags=["Cart"])
-app.include_router(sections.router)  # sections router already has /sections prefix
 
 # ---- Root ----
 @app.get("/")

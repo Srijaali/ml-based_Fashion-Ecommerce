@@ -105,7 +105,7 @@ def update_customer(
 
 @router.delete("/{customer_id}")
 def delete_customer(
-    customer_id: str,
+    customer_id: str, 
     current_admin: AdminResponse = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
@@ -124,10 +124,10 @@ def delete_customer(
 # ------------------------
 @router.put("/{customer_id}/active")
 def set_customer_active(
-    customer_id: str,
-    active: bool,
+    customer_id: str, 
+    active: bool, 
     current_admin: AdminResponse = Depends(get_current_admin),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
     """Activate/deactivate customer (Admin only)"""
     c = db.query(Customer).filter(Customer.customer_id == customer_id).first()

@@ -115,7 +115,7 @@ def decode_access_token(token: str) -> dict:
 
 
 # ============================================================
-#  CURRENT USER / ADMIN / CUSTOMER DEPENDENCIES
+#  CURRENT ADMIN DEPENDENCY
 # ============================================================
 
 def _validate_subject(subject: Any) -> str:
@@ -138,7 +138,9 @@ def _get_admin_by_id(admin_id: str, db: Session) -> Admin:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Fetch admin from DB
     admin = db.query(Admin).filter(Admin.admin_id == admin_id_int).first()
+
     if not admin:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

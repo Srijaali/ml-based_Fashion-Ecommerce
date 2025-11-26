@@ -17,7 +17,6 @@ from app.schemas.events_schema import (
     EventsPerDay,
     EventsPerHour,
 )
-
 router = APIRouter()
 
 # ---------------------------------------------------
