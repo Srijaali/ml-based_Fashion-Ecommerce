@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException,status
-from sqlalchemy.orm import Session
 from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.customer_auth import get_current_customer, CustomerResponse
 from app.db.database import get_db
 from app.db.models.cart import Cart
+from app.dependencies import AdminResponse, get_current_admin
 from app.schemas.cart import (
     CartItemBase,
     CartItemCreate,
@@ -11,11 +15,8 @@ from app.schemas.cart import (
     CartItemUpdate,
     CartResponse,
 )
+
 router = APIRouter()
-
-
-from fastapi import APIRouter, Depends
-from app.customer_auth import get_current_customer, CustomerResponse
 
 
 
@@ -125,8 +126,13 @@ def remove_from_cart(
 
 # Admin-only endpoint to get all carts
 @router.get("/all", response_model=List[CartItemBase])
-def get_all_cart(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """Get all carts (Admin only - no auth for now, but should be added)"""
+def get_all_cart(
+    skip: int = 0,
+    limit: int = 100,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Get all carts (Admin only)."""
     return db.query(Cart).offset(skip).limit(limit).all()
 
 @router.get("/customer/{customer_id}", response_model=CartResponse)

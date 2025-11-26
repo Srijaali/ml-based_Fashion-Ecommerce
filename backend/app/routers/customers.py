@@ -1,31 +1,76 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import text
 from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.core.auth import get_current_user
 from app.db.database import get_db
 from app.db.models.customers import Customer
-from app.schemas.customers_schema import(
-    CustomerCreate, CustomerOut,CustomerOrder,
-    CustomerResponse,CustomerFeaturesResponse,PurchaseFrequencyResponse,
-    CLVResponse,RFMResponse,EventItem
+from app.dependencies import AdminResponse, get_current_admin
+from app.schemas.customers_schema import (
+    CLVResponse,
+    CustomerCreate,
+    CustomerFeaturesResponse,
+    CustomerOrder,
+    CustomerOut,
+    CustomerResponse,
+    EventItem,
+    PurchaseFrequencyResponse,
+    RFMResponse,
 )
-from app.dependencies import get_current_admin, AdminResponse
 
 router = APIRouter()
 
+
+def _assert_admin_or_owner(target_customer_id: str, current_user: dict) -> None:
+    """
+    Helper to ensure that the caller is either an admin or the owner of the customer profile.
+    """
+    if current_user["type"] == "admin":
+        return
+
+    customer = current_user.get("customer")
+    if current_user["type"] == "customer" and customer and str(customer.customer_id) == str(target_customer_id):
+        return
+
+    raise HTTPException(status_code=403, detail="Not authorized for this customer")
+
+
 @router.get("/", response_model=List[CustomerOut])
-def get_all_customers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return db.query(Customer).order_by(Customer.customer_id.asc()).offset(skip).limit(limit).all()
+def get_all_customers(
+    skip: int = 0,
+    limit: int = 100,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(Customer)
+        .order_by(Customer.customer_id.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 @router.get("/{customer_id}", response_model=CustomerOut)
-def get_customer(customer_id: str, db: Session = Depends(get_db)):
+def get_customer(
+    customer_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _assert_admin_or_owner(customer_id, current_user)
+
     db_customer = db.query(Customer).filter(Customer.customer_id == customer_id).first()
     if not db_customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     return db_customer
 
 @router.post("/", response_model=CustomerResponse)
-def create_customer(payload: CustomerCreate, db: Session = Depends(get_db)):
+def create_customer(
+    payload: CustomerCreate,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     # NOTE: password hashing / validation should be handled here in real system.
     # For now assume password (if provided) will be hashed by a service or DB trigger.
     data = payload.dict(exclude_none=True)
@@ -38,12 +83,17 @@ def create_customer(payload: CustomerCreate, db: Session = Depends(get_db)):
 
 @router.put("/{customer_id}", response_model=CustomerOut)
 def update_customer(
-    customer_id: str, 
-    customer: CustomerCreate, 
-    current_admin: AdminResponse = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    customer_id: str,
+    customer: CustomerCreate,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Update customer (Admin only)"""
+    """
+    Update customer profile.
+    Admins can update any profile, customers can only update their own.
+    """
+    _assert_admin_or_owner(customer_id, current_user)
+
     db_customer = db.query(Customer).filter(Customer.customer_id == customer_id).first()
     if not db_customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -55,9 +105,9 @@ def update_customer(
 
 @router.delete("/{customer_id}")
 def delete_customer(
-    customer_id: str, 
+    customer_id: str,
     current_admin: AdminResponse = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Delete customer (Admin only)"""
     db_customer = db.query(Customer).filter(Customer.customer_id == customer_id).first()
@@ -74,10 +124,10 @@ def delete_customer(
 # ------------------------
 @router.put("/{customer_id}/active")
 def set_customer_active(
-    customer_id: str, 
-    active: bool, 
+    customer_id: str,
+    active: bool,
     current_admin: AdminResponse = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Activate/deactivate customer (Admin only)"""
     c = db.query(Customer).filter(Customer.customer_id == customer_id).first()
@@ -94,7 +144,12 @@ def set_customer_active(
 
 # Customer features (from customer_features view)
 @router.get("/{customer_id}/features", response_model=CustomerFeaturesResponse)
-def get_customer_features(customer_id: str, db: Session = Depends(get_db)):
+def get_customer_features(
+    customer_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _assert_admin_or_owner(customer_id, current_user)
     sql = text("""
         SELECT *
         FROM niche_data.customer_features
@@ -109,7 +164,12 @@ def get_customer_features(customer_id: str, db: Session = Depends(get_db)):
 
 # Purchase frequency view
 @router.get("/{customer_id}/purchase-frequency", response_model=PurchaseFrequencyResponse)
-def get_purchase_frequency(customer_id: str, db: Session = Depends(get_db)):
+def get_purchase_frequency(
+    customer_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _assert_admin_or_owner(customer_id, current_user)
     sql = text("""
         SELECT *
         FROM niche_data.v_customer_purchase_frequency
@@ -124,7 +184,12 @@ def get_purchase_frequency(customer_id: str, db: Session = Depends(get_db)):
 
 # CLV materialized view
 @router.get("/{customer_id}/clv", response_model=CLVResponse)
-def get_customer_clv(customer_id: str, db: Session = Depends(get_db)):
+def get_customer_clv(
+    customer_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _assert_admin_or_owner(customer_id, current_user)
     sql = text("""
         SELECT *
         FROM niche_data.mv_customer_clv
@@ -139,7 +204,12 @@ def get_customer_clv(customer_id: str, db: Session = Depends(get_db)):
 
 # RFM materialized view
 @router.get("/{customer_id}/rfm", response_model=RFMResponse)
-def get_customer_rfm(customer_id: str, db: Session = Depends(get_db)):
+def get_customer_rfm(
+    customer_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _assert_admin_or_owner(customer_id, current_user)
     sql = text("""
         SELECT *
         FROM niche_data.mv_rfm
@@ -154,7 +224,14 @@ def get_customer_rfm(customer_id: str, db: Session = Depends(get_db)):
 
 # Events timeline (paginated)
 @router.get("/{customer_id}/events", response_model=List[EventItem])
-def get_customer_events(customer_id: str, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_customer_events(
+    customer_id: str,
+    skip: int = 0,
+    limit: int = 100,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _assert_admin_or_owner(customer_id, current_user)
     sql = text("""
         SELECT 
             event_id,
@@ -180,7 +257,14 @@ def get_customer_events(customer_id: str, skip: int = 0, limit: int = 100, db: S
 
 # Orders summary for a customer (lightweight)
 @router.get("/{customer_id}/orders", response_model=List[CustomerOrder])
-def get_customer_orders(customer_id: str, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_customer_orders(
+    customer_id: str,
+    skip: int = 0,
+    limit: int = 100,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _assert_admin_or_owner(customer_id, current_user)
     # Simplified order summary — adjust field names if your orders table differs
     sql = text("""
         SELECT order_id, customer_id, payment_status, total_amount, order_date,shipping_address

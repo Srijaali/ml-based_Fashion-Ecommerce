@@ -1,20 +1,35 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import List,Optional
 from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from app.db.database import get_db
 from app.db.models.events import Event
+from app.dependencies import AdminResponse, get_current_admin
 from app.schemas.events_schema import (
-    EventBase,EventCreate,EventItem, EventTypeCount, EventsPerHour, EventsPerDay,
-    EventStats, EventSearchResult
+    EventBase,
+    EventCreate,
+    EventItem,
+    EventSearchResult,
+    EventStats,
+    EventTypeCount,
+    EventsPerDay,
+    EventsPerHour,
 )
+
 router = APIRouter()
 
 # ---------------------------------------------------
 # 1. GET All Events (with filters)
 # ---------------------------------------------------
 @router.get("/", response_model=List[EventBase])
-def get_all_events(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_all_events(
+    skip: int = 0,
+    limit: int = 100,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     return db.query(Event).offset(skip).limit(limit).all()
 
 
@@ -22,7 +37,11 @@ def get_all_events(skip: int = 0, limit: int = 100, db: Session = Depends(get_db
 # 2. Events By Customer
 # ---------------------------------------------------
 @router.get("/customer/{customer_id}", response_model=List[EventItem])
-def get_events_by_customer(customer_id: str, db: Session = Depends(get_db)):
+def get_events_by_customer(
+    customer_id: str,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     sql = text("""
         SELECT *
         FROM niche_data.events
@@ -36,7 +55,11 @@ def get_events_by_customer(customer_id: str, db: Session = Depends(get_db)):
 # 3. Events By Article
 # ---------------------------------------------------
 @router.get("/article/{article_id}", response_model=List[EventItem])
-def get_events_by_article(article_id: str, db: Session = Depends(get_db)):
+def get_events_by_article(
+    article_id: str,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     sql = text("""
         SELECT *
         FROM niche_data.events
@@ -50,7 +73,11 @@ def get_events_by_article(article_id: str, db: Session = Depends(get_db)):
 # 4. Events By Session
 # ---------------------------------------------------
 @router.get("/session/{session_id}", response_model=List[EventItem])
-def get_events_by_session(session_id: str, db: Session = Depends(get_db)):
+def get_events_by_session(
+    session_id: str,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     sql = text("""
         SELECT *
         FROM niche_data.events
@@ -64,7 +91,11 @@ def get_events_by_session(session_id: str, db: Session = Depends(get_db)):
 # 5. Recent Events
 # ---------------------------------------------------
 @router.get("/recent", response_model=List[EventItem])
-def get_recent_events(limit: int = 50, db: Session = Depends(get_db)):
+def get_recent_events(
+    limit: int = 50,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     sql = text("""
         SELECT *
         FROM niche_data.events
@@ -78,22 +109,30 @@ def get_recent_events(limit: int = 50, db: Session = Depends(get_db)):
 # 6. Events by Type
 # ---------------------------------------------------
 @router.get("/type/{event_type}", response_model=List[EventItem])
-def get_events_by_type(event_type: str,limit:int=50, db: Session = Depends(get_db)):
+def get_events_by_type(
+    event_type: str,
+    limit: int = 50,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     sql = text("""
         SELECT *
         FROM niche_data.events
         WHERE event_type = :etype
         ORDER BY created_at DESC
-        LIMIT
+        LIMIT :limit
     """)
-    return db.execute(sql, {"etype": event_type,"limit":limit}).mappings().all()
+    return db.execute(sql, {"etype": event_type, "limit": limit}).mappings().all()
 
 
 # ---------------------------------------------------
 # 7. Event Type Count Analytics
 # ---------------------------------------------------
 @router.get("/analytics/type-count", response_model=List[EventTypeCount])
-def type_count(db: Session = Depends(get_db)):
+def type_count(
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     sql = text("""
         SELECT event_type, COUNT(*) AS count
         FROM niche_data.events
@@ -106,7 +145,10 @@ def type_count(db: Session = Depends(get_db)):
 # 8. Events Per Hour (traffic)
 # ---------------------------------------------------
 @router.get("/analytics/per-hour", response_model=List[EventsPerHour])
-def events_per_hour(db: Session = Depends(get_db)):
+def events_per_hour(
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     sql = text("""
         SELECT EXTRACT(HOUR FROM created_at) AS hour,
                COUNT(*) AS count
@@ -121,7 +163,10 @@ def events_per_hour(db: Session = Depends(get_db)):
 # 9. Events Per Day
 # ---------------------------------------------------
 @router.get("/analytics/per-day", response_model=List[EventsPerDay])
-def events_per_day(db: Session = Depends(get_db)):
+def events_per_day(
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     sql = text("""
         SELECT DATE(created_at) AS date,
                COUNT(*) AS count
@@ -136,7 +181,10 @@ def events_per_day(db: Session = Depends(get_db)):
 # 10. Overall Stats
 # ---------------------------------------------------
 @router.get("/analytics/stats", response_model=EventStats)
-def events_stats(db: Session = Depends(get_db)):
+def events_stats(
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     sql = text("""
         SELECT
             (SELECT COUNT(*) FROM niche_data.events) AS total_events,
@@ -151,7 +199,11 @@ def events_stats(db: Session = Depends(get_db)):
 # 11. Search
 # ---------------------------------------------------
 @router.get("/search", response_model=List[EventSearchResult])
-def search_events(q: str, db: Session = Depends(get_db)):
+def search_events(
+    q: str,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     sql = text("""
         SELECT event_id, session_id, customer_id, article_id, event_type, created_at
         FROM niche_data.events
@@ -174,7 +226,12 @@ def add_event(event: EventCreate, db: Session = Depends(get_db)):
     return db_event
 
 @router.put("/{event_id}", response_model=EventBase)
-def update_event(event_id: int, event: EventCreate, db: Session = Depends(get_db)):
+def update_event(
+    event_id: int,
+    event: EventCreate,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     db_event = db.query(Event).filter(Event.event_id == event_id).first()
     if not db_event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -185,7 +242,11 @@ def update_event(event_id: int, event: EventCreate, db: Session = Depends(get_db
     return db_event
 
 @router.delete("/{event_id}")
-def delete_event(event_id: int, db: Session = Depends(get_db)):
+def delete_event(
+    event_id: int,
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     db_event = db.query(Event).filter(Event.event_id == event_id).first()
     if not db_event:
         raise HTTPException(status_code=404, detail="Event not found")

@@ -1,24 +1,20 @@
 # customer_auth.py - Customer Authentication System
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from pydantic import BaseModel, EmailStr
 from typing import Optional
-import os
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from passlib.context import CryptContext
+from pydantic import BaseModel, EmailStr
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.core.auth import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    create_access_token,
+    get_current_customer as core_get_current_customer,
+)
 from app.db.database import get_db
-
-# JWT Configuration (same as admin)
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
-security = HTTPBearer()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # ============================================
@@ -69,58 +65,29 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # ============================================
 
 def create_customer_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire, "type": "customer"})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    """
+    Wrapper around the shared create_access_token helper that forces the
+    token type to 'customer'.
+    """
+    payload = data.copy()
+    payload["type"] = "customer"
+    return create_access_token(payload, expires_delta)
 
 # ============================================
 # GET CURRENT CUSTOMER DEPENDENCY
 # ============================================
 
-def get_current_customer(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    try:
-        token = credentials.credentials
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        customer_id: str = str(payload.get("sub"))  # Convert to string since it's VARCHAR in DB
-        token_type: str = payload.get("type")
-        
-        if customer_id is None or token_type != "customer":
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    
-    # Fetch customer from database
-    customer = db.execute(
-        text("""
-            SELECT customer_id, email, first_name, last_name 
-            FROM niche_data.customers 
-            WHERE customer_id = :customer_id
-        """),
-        {"customer_id": customer_id}
-    ).fetchone()
-    
-    if customer is None:
-        raise credentials_exception
-    
+def get_current_customer(current_customer=Depends(core_get_current_customer)):
+    """
+    Compatibility wrapper that converts the SQLAlchemy customer instance
+    returned by core.auth into the lightweight CustomerResponse schema
+    expected by existing routers.
+    """
     return CustomerResponse(
-        customer_id=customer.customer_id,
-        email=customer.email,
-        first_name=customer.first_name,
-        last_name=customer.last_name
+        customer_id=current_customer.customer_id,
+        email=current_customer.email,
+        first_name=current_customer.first_name,
+        last_name=current_customer.last_name,
     )
 
 # ============================================

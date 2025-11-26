@@ -50,7 +50,7 @@ def get_admin_or_customer(
 
 @router.post("/create")
 def create_review(
-    article_id: int,
+    article_id: str,
     review_text: str,
     current_customer: CustomerResponse = Depends(get_current_customer),
     db: Session = Depends(get_db)

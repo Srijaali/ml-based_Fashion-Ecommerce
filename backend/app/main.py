@@ -1,20 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from app.db.database import Base, engine
-from app.routers import (
-    admins,
-    articles,
-    categories,
-    customers,
-    events,
-    orders,
-    order_items,
-    reviews,
-    transactions,
-    wishlist,
-    cart,
-)
+from app.routers import admins, articles, cart, categories, customers, events, order_items, orders, reviews, sections, transactions, wishlist
 from app.customer_auth import router as customer_auth_router
 
 
@@ -53,8 +42,47 @@ app.include_router(reviews.router, prefix="/reviews", tags=["Reviews"])
 app.include_router(transactions.router, prefix="/transactions", tags=["Transactions"])
 app.include_router(wishlist.router, prefix="/wishlist", tags=["Wishlist"])
 app.include_router(cart.router, prefix="/cart", tags=["Cart"])
+app.include_router(sections.router)  # sections router already has /sections prefix
 
 # ---- Root ----
 @app.get("/")
 def root():
     return {"message": "Welcome to the LAYR E-Commerce API"}
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    security_schemes = openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})
+    security_schemes.setdefault(
+        "AdminToken",
+        {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Admin JWT generated via /admins/login",
+        },
+    )
+    security_schemes.setdefault(
+        "CustomerToken",
+        {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Customer JWT generated via /customers/auth/login",
+        },
+    )
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
