@@ -1,13 +1,51 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional, Union
 from sqlalchemy import text
 from app.db.database import get_db
 from app.db.models.reviews import Review
-from app.schemas.reviews_schema import ReviewCreate, ReviewOut,ReviewBase,ReviewUpdate
+from app.schemas.reviews_schema import ReviewCreate, ReviewOut, ReviewBase, ReviewUpdate
+from app.customer_auth import get_current_customer, CustomerResponse
+from app.dependencies import get_current_admin, AdminResponse
+from app.core.auth import get_current_admin as _get_current_admin_core
+from fastapi.security import HTTPAuthorizationCredentials
+from app.core.auth import auth_scheme
 
 router = APIRouter()
-from app.customer_auth import get_current_customer, CustomerResponse
+
+# Helper to get either admin or customer for delete endpoint
+def get_admin_or_customer(
+    credentials: HTTPAuthorizationCredentials = Depends(auth_scheme),
+    db: Session = Depends(get_db)
+) -> Union[AdminResponse, CustomerResponse]:
+    """Helper that accepts either admin or customer token for delete operations"""
+    from app.core.auth import decode_access_token
+    from jose import JWTError
+    import jwt
+    import os
+    
+    SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+    ALGORITHM = "HS256"
+    
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        token_type = payload.get("type")
+        
+        if token_type == "admin":
+            admin = _get_current_admin_core(credentials, db)
+            return AdminResponse(
+                admin_id=admin.admin_id,
+                username=admin.username,
+                email=admin.email,
+                is_active=admin.is_active
+            )
+        elif token_type == "customer":
+            return get_current_customer(credentials, db)
+        else:
+            raise HTTPException(401, "Invalid token type")
+    except (JWTError, HTTPException):
+        raise HTTPException(401, "Invalid token")
 
 
 @router.post("/create")
@@ -191,15 +229,20 @@ def update_review(
 
 
 # ---------------------------
-# DELETE REVIEW (Customer authenticated - can only delete own reviews, or Admin)
+# DELETE REVIEW (Customer can delete own reviews, Admin can delete any)
 # ---------------------------
 @router.delete("/{review_id}", status_code=200)
 def delete_review(
-    review_id: int, 
-    current_customer: CustomerResponse = Depends(get_current_customer),
+    review_id: int,
+    user: Union[AdminResponse, CustomerResponse] = Depends(get_admin_or_customer),
     db: Session = Depends(get_db)
 ):
-    # Check if review belongs to current customer
+    """
+    Delete a review.
+    Customers can delete their own reviews.
+    Admins can delete any review.
+    """
+    # Check if review exists
     review_check = db.execute(
         text("SELECT customer_id FROM niche_data.reviews WHERE review_id = :rid"),
         {"rid": review_id}
@@ -208,8 +251,14 @@ def delete_review(
     if not review_check:
         raise HTTPException(404, "Review not found")
     
-    if review_check[0] != current_customer.customer_id:
-        raise HTTPException(403, "Cannot delete another customer's review")
+    # Admin can delete any review, customer can only delete their own
+    if isinstance(user, AdminResponse):
+        # Admin override - can delete any review
+        pass
+    elif isinstance(user, CustomerResponse):
+        # Customer can only delete their own reviews
+        if str(review_check[0]) != str(user.customer_id):
+            raise HTTPException(403, "Cannot delete another customer's review")
     
     result = db.execute(text("""
         DELETE FROM niche_data.reviews

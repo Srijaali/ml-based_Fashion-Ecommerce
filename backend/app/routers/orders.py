@@ -1,17 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException,status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List,Optional
+from typing import List, Optional
 from decimal import Decimal
 from sqlalchemy import text
 from app.db.database import get_db
 from app.db.models.orders import Order
 from app.schemas.orders_schema import (
-    OrderCreate,OrderOut, OrderResponse, OrderDetailResponse, OrderUpdate,
+    OrderCreate, OrderOut, OrderResponse, OrderDetailResponse, OrderUpdate,
     OrderListItem, OrderItemResponse, DailySalesItem
 )
 from sqlalchemy.exc import IntegrityError
-from fastapi import APIRouter, Depends
 from app.customer_auth import get_current_customer, CustomerResponse
+from app.dependencies import get_current_admin, AdminResponse
+
 router = APIRouter()
 
 
@@ -23,20 +24,20 @@ def get_my_orders(
     """Get all orders for logged-in customer"""
     orders = db.execute(
         text("""
-            SELECT order_id, total_amount, status, 
-                   shipping_address, created_at
-            FROM orders
+            SELECT order_id, total_amount, payment_status, 
+                   shipping_address, order_date
+            FROM niche_data.orders
             WHERE customer_id = :customer_id
-            ORDER BY created_at DESC
+            ORDER BY order_date DESC
         """),
-        {"customer_id": current_customer.customer_id}
+        {"customer_id": str(current_customer.customer_id)}
     ).fetchall()
     
     return [
         {
             "order_id": order[0],
             "total_amount": float(order[1]),
-            "status": order[2],
+            "payment_status": order[2],
             "shipping_address": order[3],
             "created_at": order[4]
         }
@@ -55,11 +56,11 @@ def create_order(
     cart_items = db.execute(
         text("""
             SELECT c.article_id, c.quantity, a.price
-            FROM cart c
-            JOIN articles a ON c.article_id = a.article_id
+            FROM niche_data.cart c
+            JOIN niche_data.articles a ON c.article_id = a.article_id
             WHERE c.customer_id = :customer_id
         """),
-        {"customer_id": current_customer.customer_id}
+        {"customer_id": str(current_customer.customer_id)}
     ).fetchall()
     
     if not cart_items:
@@ -71,18 +72,18 @@ def create_order(
     # Create order
     order_result = db.execute(
         text("""
-            INSERT INTO orders (
-                customer_id, total_amount, status, 
-                shipping_address, created_at, updated_at
+            INSERT INTO niche_data.orders (
+                customer_id, total_amount, payment_status, 
+                shipping_address, order_date
             )
             VALUES (
                 :customer_id, :total_amount, 'pending', 
-                :shipping_address, NOW(), NOW()
+                :shipping_address, NOW()
             )
             RETURNING order_id
         """),
         {
-            "customer_id": current_customer.customer_id,
+            "customer_id": str(current_customer.customer_id),
             "total_amount": total_amount,
             "shipping_address": shipping_address
         }
@@ -94,13 +95,13 @@ def create_order(
     for item in cart_items:
         db.execute(
             text("""
-                INSERT INTO order_items (
+                INSERT INTO niche_data.order_items (
                     order_id, article_id, quantity, 
-                    price_at_time, created_at
+                    unit_price
                 )
                 VALUES (
                     :order_id, :article_id, :quantity, 
-                    :price, NOW()
+                    :price
                 )
             """),
             {
@@ -113,8 +114,8 @@ def create_order(
     
     # Clear cart
     db.execute(
-        text("DELETE FROM cart WHERE customer_id = :customer_id"),
-        {"customer_id": current_customer.customer_id}
+        text("DELETE FROM niche_data.cart WHERE customer_id = :customer_id"),
+        {"customer_id": str(current_customer.customer_id)}
     )
     
     db.commit()
@@ -129,7 +130,13 @@ def create_order(
 
 
 @router.get("/", response_model=List[OrderOut])
-def get_all_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_all_orders(
+    skip: int = 0, 
+    limit: int = 100, 
+    current_admin: AdminResponse = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Get all orders (Admin only)"""
     return db.query(Order).order_by(Order.order_date.desc()).offset(skip).limit(limit).all()
 
 
@@ -174,25 +181,21 @@ def get_order_details(
 @router.get("/customer/{customer_id}", response_model=List[OrderOut])
 def get_orders_for_customer(
     customer_id: str, 
-    current_customer: CustomerResponse = Depends(get_current_customer),
+    current_admin: AdminResponse = Depends(get_current_admin),
     skip: int = 0, 
     limit: int = 100, 
     db: Session = Depends(get_db)
 ):
     """
-    Get orders for a specific customer.
-    Customer can only view their own orders.
+    Get orders for a specific customer (Admin only).
+    Admins can view any customer's orders.
     """
-    # Ensure customer can only view their own orders
-    if str(current_customer.customer_id) != str(customer_id):
-        raise HTTPException(status_code=403, detail="Cannot view another customer's orders")
-    
     sql = text("""
         SELECT *
         FROM niche_data.orders
         WHERE customer_id = :cid
         ORDER BY order_date DESC
-
+        LIMIT :limit OFFSET :skip
     """)
     return db.execute(sql, {"cid": customer_id, "skip": skip, "limit": limit}).mappings().all()
 
@@ -212,8 +215,10 @@ def filter_orders(
     date_to: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
+    current_admin: AdminResponse = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    """Filter orders (Admin only)"""
     sql = "SELECT * FROM niche_data.orders WHERE 1=1"
     params = {}
 
@@ -261,8 +266,10 @@ def filter_orders(
 def get_daily_sales(
     skip: int = 0,
     limit: int = 50,
+    current_admin: AdminResponse = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    """Get daily sales analytics (Admin only)"""
     # 1) Find first order_date automatically
     min_date_sql = text("""
         SELECT MIN(order_date) AS first_date
@@ -307,17 +314,67 @@ def create_full_order(
 ):
     """
     Create a full order with items.
+    Prices are fetched directly from articles table.
+    Total amount is calculated based on quantity * price from articles table.
     Customer can only create orders for themselves.
     """
     # Ensure customer can only create orders for themselves
     if str(payload.customer_id) != str(current_customer.customer_id):
         raise HTTPException(status_code=403, detail="Cannot create orders for another customer")
 
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="Order must contain at least one item")
+
     try:
-        # 1. Compute total
-        total_amount = sum(
-            Decimal(i.unit_price) * i.quantity for i in payload.items
-        )
+        # 1. Fetch prices from articles table for all article_ids
+        article_ids = [item.article_id for item in payload.items]
+        
+        sql_get_prices = text("""
+            SELECT article_id, price, stock
+            FROM niche_data.articles
+            WHERE article_id = ANY(:article_ids)
+        """)
+        
+        articles_result = db.execute(
+            sql_get_prices,
+            {"article_ids": article_ids}
+        ).fetchall()
+        
+        # Create a dictionary mapping article_id to price and stock
+        articles_dict = {row[0]: {"price": Decimal(str(row[1])), "stock": row[2]} for row in articles_result}
+        
+        # Validate all articles exist and check stock
+        order_items_data = []
+        total_amount = Decimal(0)
+        
+        for item in payload.items:
+            if item.article_id not in articles_dict:
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"Article {item.article_id} not found"
+                )
+            
+            article_info = articles_dict[item.article_id]
+            article_price = article_info["price"]
+            article_stock = article_info["stock"]
+            
+            # Check stock availability
+            if article_stock < item.quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Insufficient stock for article {item.article_id}. Available: {article_stock}, Requested: {item.quantity}"
+                )
+            
+            # Calculate line total
+            line_total = article_price * item.quantity
+            total_amount += line_total
+            
+            # Store item data with price from DB
+            order_items_data.append({
+                "article_id": item.article_id,
+                "quantity": item.quantity,
+                "unit_price": article_price
+            })
 
         # 2. Insert order header
         sql_header = text("""
@@ -326,33 +383,40 @@ def create_full_order(
             RETURNING order_id
         """)
         order_id = db.execute(sql_header, {
-            "cid": payload.customer_id,
+            "cid": str(payload.customer_id),
             "total": total_amount,
             "status": payload.payment_status,
             "addr": payload.shipping_address
         }).scalar()
 
-        # 3. Insert items
+        # 3. Insert order items with prices from articles table
         sql_item = text("""
             INSERT INTO niche_data.order_items (order_id, article_id, quantity, unit_price)
             VALUES (:oid, :aid, :qty, :price)
         """)
 
-        for i in payload.items:
+        for item_data in order_items_data:
             db.execute(sql_item, {
                 "oid": order_id,
-                "aid": i.article_id,
-                "qty": i.quantity,
-                "price": i.unit_price
+                "aid": item_data["article_id"],
+                "qty": item_data["quantity"],
+                "price": item_data["unit_price"]
             })
 
         db.commit()
 
+        # Return the created order
         return db.query(Order).filter(Order.order_id == order_id).first()
 
     except IntegrityError as e:
         db.rollback()
         raise HTTPException(400, f"DB integrity error: {str(e)}")
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Error creating order: {str(e)}")
 
 # -------------------------------------------
 #           UPDATE ORDER (E-COMMERCE STYLE)
@@ -362,25 +426,13 @@ def create_full_order(
 def update_order_status(
     order_id: int, 
     payment_status: str, 
-    current_customer: CustomerResponse = Depends(get_current_customer),
+    current_admin: AdminResponse = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
     """
-    Update order status.
-    Customer can only update their own orders (typically to cancel).
+    Update order status (Admin only).
+    Admins can update any order's status.
     """
-    # Check if order belongs to current customer
-    order_check = db.execute(
-        text("SELECT customer_id FROM niche_data.orders WHERE order_id = :oid"),
-        {"oid": order_id}
-    ).fetchone()
-    
-    if not order_check:
-        raise HTTPException(status_code=404, detail="Order not found")
-    
-    if str(order_check[0]) != str(current_customer.customer_id):
-        raise HTTPException(status_code=403, detail="Cannot update another customer's order")
-    
     sql = text("""
         UPDATE niche_data.orders
         SET payment_status = :status

@@ -16,7 +16,6 @@ from app.routers import (
     cart,
 )
 from app.customer_auth import router as customer_auth_router
-from fastapi.security import OAuth2PasswordBearer
 
 
 app = FastAPI(
@@ -24,7 +23,6 @@ app = FastAPI(
     description="FastAPI backend for e-commerce project",
     version="1.0.0"
 )
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="admins/token")
 
 # ---- CORS ----
 origins = ["*"]  # change to specific frontend domains later

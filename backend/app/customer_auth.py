@@ -26,11 +26,19 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # ============================================
 
 class CustomerSignup(BaseModel):
-    email: EmailStr
-    password: str
+    age: int
+    postal_code: str
+    club_member_status: str
+    fashion_news_frequency: str
+    active: bool
     first_name: str
     last_name: str
+    email: EmailStr
+    gender: str
+    loyalty_score: float
+    password: str
     phone: Optional[str] = None
+    address: Optional[str] = None
 
 class CustomerLogin(BaseModel):
     email: EmailStr
@@ -41,7 +49,7 @@ class Token(BaseModel):
     token_type: str
 
 class CustomerResponse(BaseModel):
-    customer_id: int
+    customer_id: str  # VARCHAR in database, so must be str
     email: str
     first_name: str
     last_name: str
@@ -87,7 +95,7 @@ def get_current_customer(
     try:
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        customer_id: int = payload.get("sub")
+        customer_id: str = str(payload.get("sub"))  # Convert to string since it's VARCHAR in DB
         token_type: str = payload.get("type")
         
         if customer_id is None or token_type != "customer":
@@ -99,7 +107,7 @@ def get_current_customer(
     customer = db.execute(
         text("""
             SELECT customer_id, email, first_name, last_name 
-            FROM customers 
+            FROM niche_data.customers 
             WHERE customer_id = :customer_id
         """),
         {"customer_id": customer_id}
@@ -127,7 +135,7 @@ def customer_signup(signup_data: CustomerSignup, db: Session = Depends(get_db)):
     
     # Check if email already exists
     existing = db.execute(
-        text("SELECT customer_id FROM customers WHERE email = :email"),
+        text("SELECT customer_id FROM niche_data.customers WHERE email = :email"),
         {"email": signup_data.email}
     ).fetchone()
     
@@ -140,30 +148,63 @@ def customer_signup(signup_data: CustomerSignup, db: Session = Depends(get_db)):
     # Hash password
     hashed_password = get_password_hash(signup_data.password)
     
-    # Insert customer
+    # Generate sequential customer_id: MAX(customer_id) + 1
+    # customer_id is VARCHAR, but we'll treat numeric values as sequential
+    # This handles both numeric strings and ensures sequential IDs
+    max_id_result = db.execute(
+        text("""
+            SELECT MAX(
+                CASE 
+                    WHEN customer_id ~ '^[0-9]+$' THEN customer_id::bigint
+                    ELSE 0
+                END
+            ) as max_numeric_id
+            FROM niche_data.customers
+        """)
+    ).fetchone()
+    
+    # Get the maximum numeric customer_id, or start at 0 if no customers exist
+    max_numeric_id = max_id_result[0] if max_id_result and max_id_result[0] is not None else 0
+    
+    # Generate next customer_id (max + 1)
+    next_customer_id = str(max_numeric_id + 1)
+    
+    # Insert customer with the generated sequential ID
     result = db.execute(
         text("""
-            INSERT INTO customers (
-                email, password_hash, first_name, last_name, 
-                phone, created_at, updated_at
+            INSERT INTO niche_data.customers (
+                customer_id, age, postal_code, club_member_status, fashion_news_frequency, 
+                active, first_name, last_name, email, signup_date, gender, loyalty_score,
+                password_hash, phone, address
             )
             VALUES (
-                :email, :password_hash, :first_name, :last_name, 
-                :phone, NOW(), NOW()
+                :customer_id, :age, :postal_code, :club_member_status, :fashion_news_frequency, 
+                :active, :first_name, :last_name, :email, :signup_date, :gender, :loyalty_score,
+                :password_hash, :phone, :address
             )
             RETURNING customer_id
-        """),
-        {
-            "email": signup_data.email,
-            "password_hash": hashed_password,
+        """),{
+            "customer_id": next_customer_id,
+            "age": signup_data.age,
+            "postal_code": signup_data.postal_code,
+            "club_member_status": signup_data.club_member_status,
+            "fashion_news_frequency": signup_data.fashion_news_frequency,
+            "active": signup_data.active,
             "first_name": signup_data.first_name,
             "last_name": signup_data.last_name,
-            "phone": signup_data.phone
+            "email": signup_data.email,
+            "signup_date": datetime.utcnow(),
+            "gender": signup_data.gender,
+            "loyalty_score": signup_data.loyalty_score,
+            "password_hash": hashed_password,
+            "phone": signup_data.phone,
+            "address": signup_data.address
         }
     ).fetchone()
     
     db.commit()
     
+    # Get the customer_id from the result
     customer_id = result[0]
     
     # Create JWT token
@@ -183,7 +224,7 @@ def customer_login(login_data: CustomerLogin, db: Session = Depends(get_db)):
     customer = db.execute(
         text("""
             SELECT customer_id, password_hash 
-            FROM customers 
+            FROM niche_data.customers 
             WHERE email = :email
         """),
         {"email": login_data.email}
