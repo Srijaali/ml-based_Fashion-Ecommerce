@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchOrders, fetchProducts, fetchCustomers } from "../../api/api";
+import { orders, articles, customers } from "../../api/api";
 
 const metricCards = [
   { key: "revenueToday", label: "Revenue (Today)" },
@@ -21,9 +21,9 @@ export default function DashboardOverview() {
     let mounted = true;
     setLoading(true);
     Promise.all([
-      fetchOrders(100, 0),
-      fetchProducts(100, 0),
-      fetchCustomers(100, 0)
+      orders.getAll(0, 100),
+      articles.getAll(0, 100),
+      customers.getAll(0, 100)
     ])
       .then(([ordersRes, productsRes, customersRes]) => {
         if (!mounted) return;

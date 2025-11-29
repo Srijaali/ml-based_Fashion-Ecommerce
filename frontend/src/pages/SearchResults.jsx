@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { fetchProducts } from '../api/api';
+import { articles } from '../api/api';
 import ProductCard from '../components/ProductCard';
 
 export default function SearchResults() {
@@ -12,12 +12,21 @@ export default function SearchResults() {
 
   useEffect(() => {
     if (query) {
-      fetchProducts().then(res => {
-        const filtered = res.data.filter(p =>
-          p.prod_name.toLowerCase().includes(query.toLowerCase())
-        );
-        setResults(filtered);
-      }).catch(err => console.error(err));
+      // Use the new search endpoint for partial matching
+      articles.search(query, 0, 200)
+        .then(res => {
+          setResults(res.data || []);
+        })
+        .catch(err => {
+          console.error('Search failed, falling back to client-side filtering:', err);
+          // Fall back to client-side filtering if search endpoint fails
+          articles.getAll(0, 200).then(res => {
+            const filtered = (res.data || []).filter(p =>
+              (p.prod_name || '').toLowerCase().includes(query.toLowerCase())
+            );
+            setResults(filtered);
+          }).catch(err => console.error(err));
+        });
     }
   }, [query]);
 

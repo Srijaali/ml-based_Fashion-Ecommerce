@@ -22,27 +22,30 @@ def get_my_orders(
     db: Session = Depends(get_db)
 ):
     """Get all orders for logged-in customer"""
-    orders = db.execute(
-        text("""
-            SELECT order_id, total_amount, payment_status, 
-                   shipping_address, order_date
-            FROM niche_data.orders
-            WHERE customer_id = :customer_id
-            ORDER BY order_date DESC
-        """),
-        {"customer_id": str(current_customer.customer_id)}
-    ).fetchall()
-    
-    return [
-        {
-            "order_id": order[0],
-            "total_amount": float(order[1]),
-            "payment_status": order[2],
-            "shipping_address": order[3],
-            "created_at": order[4]
-        }
-        for order in orders
-    ]
+    try:
+        orders = db.execute(
+            text("""
+                SELECT order_id, total_amount, payment_status, 
+                       shipping_address, order_date
+                FROM niche_data.orders
+                WHERE customer_id = :customer_id
+                ORDER BY order_date DESC
+            """),
+            {"customer_id": current_customer.customer_id}
+        ).fetchall()
+        
+        return [
+            {
+                "order_id": order[0],
+                "total_amount": float(order[1]),
+                "payment_status": order[2],
+                "shipping_address": order[3],
+                "created_at": order[4]
+            }
+            for order in orders
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve orders: {str(e)}")
 
 @router.post("/create")
 def create_order(
@@ -52,82 +55,83 @@ def create_order(
 ):
     """Create order from cart (requires authentication)"""
     
-    # Get cart items
-    cart_items = db.execute(
-        text("""
-            SELECT c.article_id, c.quantity, a.price
-            FROM niche_data.cart c
-            JOIN niche_data.articles a ON c.article_id = a.article_id
-            WHERE c.customer_id = :customer_id
-        """),
-        {"customer_id": str(current_customer.customer_id)}
-    ).fetchall()
-    
-    if not cart_items:
-        raise HTTPException(status_code=400, detail="Cart is empty")
-    
-    # Calculate total
-    total_amount = sum(item[2] * item[1] for item in cart_items)
-    
-    # Create order
-    order_result = db.execute(
-        text("""
-            INSERT INTO niche_data.orders (
-                customer_id, total_amount, payment_status, 
-                shipping_address, order_date
-            )
-            VALUES (
-                :customer_id, :total_amount, 'pending', 
-                :shipping_address, NOW()
-            )
-            RETURNING order_id
-        """),
-        {
-            "customer_id": str(current_customer.customer_id),
-            "total_amount": total_amount,
-            "shipping_address": shipping_address
-        }
-    ).fetchone()
-    
-    order_id = order_result[0]
-    
-    # Create order items
-    for item in cart_items:
-        db.execute(
+    try:
+        # Get cart items
+        cart_items = db.execute(
             text("""
-                INSERT INTO niche_data.order_items (
-                    order_id, article_id, quantity, 
-                    unit_price
+                SELECT c.article_id, c.quantity, a.price
+                FROM niche_data.cart c
+                JOIN niche_data.articles a ON c.article_id = a.article_id
+                WHERE c.customer_id = :customer_id
+            """),
+            {"customer_id": current_customer.customer_id}
+        ).fetchall()
+        
+        if not cart_items:
+            raise HTTPException(status_code=400, detail="Cart is empty")
+        
+        # Calculate total
+        total_amount = sum(item[2] * item[1] for item in cart_items)
+        
+        # Create order
+        order_result = db.execute(
+            text("""
+                INSERT INTO niche_data.orders (
+                    customer_id, total_amount, payment_status, 
+                    shipping_address, order_date
                 )
                 VALUES (
-                    :order_id, :article_id, :quantity, 
-                    :price
+                    :customer_id, :total_amount, 'pending', 
+                    :shipping_address, NOW()
                 )
+                RETURNING order_id
             """),
             {
-                "order_id": order_id,
-                "article_id": item[0],
-                "quantity": item[1],
-                "price": item[2]
+                "customer_id": current_customer.customer_id,
+                "total_amount": total_amount,
+                "shipping_address": shipping_address
             }
+        ).fetchone()
+        
+        order_id = order_result[0]
+        
+        # Create order items
+        for item in cart_items:
+            db.execute(
+                text("""
+                    INSERT INTO niche_data.order_items (
+                        order_id, article_id, quantity, 
+                        unit_price
+                    )
+                    VALUES (
+                        :order_id, :article_id, :quantity, 
+                        :price
+                    )
+                """),
+                {
+                    "order_id": order_id,
+                    "article_id": item[0],
+                    "quantity": item[1],
+                    "price": item[2]
+                }
+            )
+        
+        # Clear cart
+        db.execute(
+            text("DELETE FROM niche_data.cart WHERE customer_id = :customer_id"),
+            {"customer_id": current_customer.customer_id}
         )
-    
-    # Clear cart
-    db.execute(
-        text("DELETE FROM niche_data.cart WHERE customer_id = :customer_id"),
-        {"customer_id": str(current_customer.customer_id)}
-    )
-    
-    db.commit()
-    
-    return {
-        "order_id": order_id,
-        "total_amount": total_amount,
-        "message": "Order created successfully"
-    }
-
-
-
+        
+        db.commit()
+        
+        return {
+            "order_id": order_id,
+            "total_amount": total_amount,
+            "message": "Order created successfully"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create order: {str(e)}")
 
 @router.get("/", response_model=List[OrderOut])
 def get_all_orders(

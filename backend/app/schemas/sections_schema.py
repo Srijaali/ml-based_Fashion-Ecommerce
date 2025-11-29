@@ -61,6 +61,7 @@ class CategoryProductsResponse(BaseModel):
     section: str
     category: str
     sorting: str
+    total_products: int
     products: List[CategoryProduct]
 
 

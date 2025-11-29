@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS niche_data.articles
     price numeric(10, 2) NOT NULL,
     stock integer NOT NULL,
     category_id integer,
+    image_path text COLLATE pg_catalog."default",
     created_at timestamp with time zone,
     last_updated timestamp with time zone,
     CONSTRAINT articles_pkey PRIMARY KEY (article_id)

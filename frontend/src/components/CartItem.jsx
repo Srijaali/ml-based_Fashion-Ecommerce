@@ -16,11 +16,11 @@ export default function CartItem({ item, onRemove, onUpdateQuantity }) {
         {/* Product Image */}
         <div className="w-full sm:w-32 md:w-40 aspect-square bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 relative">
           <img
-            src={`/products/${item.image || 'placeholder.jpg'}`}
+            src={`/images/${item.image_path || 'placeholder.jpg'}`}
             alt={item.prod_name}
             className="absolute inset-0 w-full h-full object-cover"
             onError={(e) => {
-              e.target.src = '/products/placeholder.jpg';
+              e.target.src = '/images/placeholder.jpg';
             }}
           />
         </div>

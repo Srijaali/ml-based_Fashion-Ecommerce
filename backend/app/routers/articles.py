@@ -4,7 +4,7 @@ from typing import List
 
 from app.db.database import get_db
 from app.db.models.articles import Article
-from app.schemas.articles_schema import ArticleCreate, ArticleUpdate, ArticleResponse,    ArticlePerformanceResponse,ArticleDemandTrendResponse,ArticleInventoryResponse,ArticleFunnelMetricsResponse
+from app.schemas.articles_schema import ArticleCreate, ArticleUpdate, ArticleResponse, ProductOut, ArticlePerformanceResponse,ArticleDemandTrendResponse,ArticleInventoryResponse,ArticleFunnelMetricsResponse
 from app.actions import products as product_actions
 from app.dependencies import get_current_admin, AdminResponse
 
@@ -40,6 +40,18 @@ def get_articles_by_name(prod_name: str, db: Session = Depends(get_db)):
 
 
 # --------------------------------------------------------
+# SEARCH articles by partial product name (returns LIST)
+# --------------------------------------------------------
+@router.get("/search/{query}", response_model=List[ArticleResponse])
+def search_articles(query: str, skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    articles = db.query(Article).filter(
+        Article.prod_name.ilike(f"%{query}%")
+    ).offset(skip).limit(limit).all()
+
+    return articles
+
+
+# --------------------------------------------------------
 # GET single article by article_id
 # --------------------------------------------------------
 @router.get("/{article_id}", response_model=ArticleResponse)
@@ -51,6 +63,36 @@ def get_article(article_id: str, db: Session = Depends(get_db)):
 
     return article
 
+
+# --------------------------------------------------------
+# GET all products with image URLs
+# --------------------------------------------------------
+@router.get("/products/", response_model=List[ProductOut])
+def get_products_with_images(skip: int = 0, limit: int = 20, db: Session = Depends(get_db)):
+    articles = (
+        db.query(Article)
+        .order_by(Article.article_id.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    
+    # Convert articles to ProductOut objects with image URLs
+    products = [ProductOut.from_orm(article) for article in articles]
+    return products
+
+
+# --------------------------------------------------------
+# GET single product with image URL
+# --------------------------------------------------------
+@router.get("/products/{product_id}", response_model=ProductOut)
+def get_product_with_image(product_id: str, db: Session = Depends(get_db)):
+    article = db.query(Article).filter(Article.article_id == product_id).first()
+
+    if not article:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    return ProductOut.from_orm(article)
 
 
 # --------------------------------------------------------
@@ -111,7 +153,6 @@ def delete_article(
     return {"message": "Article deleted successfully"}
 
 
-
 # -----------------------------------------------------------------
 # PERFORMANCE VIEW
 # -----------------------------------------------------------------
@@ -154,4 +195,3 @@ def get_funnel_metrics(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Funnel metrics not found")
 
     return data #not working 404 not found
-

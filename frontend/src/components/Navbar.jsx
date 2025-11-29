@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { useApp } from "../context/AppContext";
 
 export default function Navbar() {
   const [showSearch, setShowSearch] = useState(false);
@@ -8,23 +9,8 @@ export default function Navbar() {
   const [showMenSubmenu, setShowMenSubmenu] = useState(false);
   const [showWomenSubmenu, setShowWomenSubmenu] = useState(false);
   const [showKidsSubmenu, setShowKidsSubmenu] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    const syncAdminStatus = () => {
-      setIsAdmin(localStorage.getItem('isAdmin') === 'true');
-    };
-    syncAdminStatus();
-
-    window.addEventListener('storage', syncAdminStatus);
-    window.addEventListener('admin-status-changed', syncAdminStatus);
-    return () => {
-      window.removeEventListener('storage', syncAdminStatus);
-      window.removeEventListener('admin-status-changed', syncAdminStatus);
-    };
-  }, []);
-
+  const { user, admin, cartItems, logout, logoutAdmin } = useApp();
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -32,6 +18,15 @@ export default function Navbar() {
     navigate(`/search?query=${encodeURIComponent(query.trim())}`);
     setQuery("");
     setShowSearch(false);
+  };
+
+  const handleLogout = () => {
+    if (admin) {
+      logoutAdmin();
+    } else {
+      logout();
+    }
+    navigate('/login');
   };
 
   return (
@@ -55,7 +50,7 @@ export default function Navbar() {
               <div className="absolute top-full left-0 pt-2 w-48 z-50">
                 <div className="bg-white border border-gray-200 rounded-md shadow-lg py-2">
                 <Link 
-                  to="/products?gender=men"
+                  to="/products?section=men"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 relative group cursor-pointer"
                   onMouseEnter={() => setShowMenSubmenu(true)}
                   onMouseLeave={() => setShowMenSubmenu(false)}
@@ -65,29 +60,29 @@ export default function Navbar() {
                     <div className="absolute left-full top-0 pl-1 w-40 z-50">
                       <div className="bg-white border border-gray-200 rounded-md shadow-lg py-2">
                       <Link 
-                        to="/products?gender=men&category=hoodies"
+                        to="/products?section=men&category=hoodie"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                       >
                         Hoodies
                       </Link>
                       <Link 
-                        to="/products?gender=men&category=jackets"
+                        to="/products?section=men&category=jacket"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                       >
                         Jackets
                       </Link>
                       <Link 
-                        to="/products?gender=men&category=bottoms"
+                        to="/products?section=men&category=trouser"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                       >
-                        Bottoms
+                        Trousers
                       </Link>
                       </div>
                     </div>
                   )}
                 </Link>
                 <Link 
-                  to="/products?gender=women"
+                  to="/products?section=women"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 relative group cursor-pointer"
                   onMouseEnter={() => setShowWomenSubmenu(true)}
                   onMouseLeave={() => setShowWomenSubmenu(false)}
@@ -97,29 +92,29 @@ export default function Navbar() {
                     <div className="absolute left-full top-0 pl-1 w-40 z-50">
                       <div className="bg-white border border-gray-200 rounded-md shadow-lg py-2">
                       <Link 
-                        to="/products?gender=women&category=hoodies"
+                        to="/products?section=women&category=hoodie"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                       >
                         Hoodies
                       </Link>
                       <Link 
-                        to="/products?gender=women&category=jackets"
+                        to="/products?section=women&category=jacket"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                       >
                         Jackets
                       </Link>
                       <Link 
-                        to="/products?gender=women&category=bottoms"
+                        to="/products?section=women&category=trouser"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                       >
-                        Bottoms
+                        Trousers
                       </Link>
                       </div>
                     </div>
                   )}
                 </Link>
                 <Link 
-                  to="/products?category=kids"
+                  to="/products?section=kids"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 relative group cursor-pointer"
                   onMouseEnter={() => setShowKidsSubmenu(true)}
                   onMouseLeave={() => setShowKidsSubmenu(false)}
@@ -129,22 +124,22 @@ export default function Navbar() {
                     <div className="absolute left-full top-0 pl-1 w-40 z-50">
                       <div className="bg-white border border-gray-200 rounded-md shadow-lg py-2">
                       <Link 
-                        to="/products?category=kids&subcategory=hoodies"
+                        to="/products?section=kids&category=hoodie"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                       >
                         Hoodies
                       </Link>
                       <Link 
-                        to="/products?category=kids&subcategory=jackets"
+                        to="/products?section=kids&category=jacket"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                       >
                         Jackets
                       </Link>
                       <Link 
-                        to="/products?category=kids&subcategory=bottoms"
+                        to="/products?section=kids&category=trouser"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                       >
-                        Bottoms
+                        Trousers
                       </Link>
                       </div>
                     </div>
@@ -157,7 +152,7 @@ export default function Navbar() {
                   For All
                 </Link>
                 <Link 
-                  to="/products?category=accessories"
+                  to="/products?section=accessories"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
                 >
                   Accessories
@@ -204,14 +199,34 @@ export default function Navbar() {
             </form>
           )}
 
-          {isAdmin ? (
+          {admin ? (
             <Link to="/admin" className="text-gray-600 hover:text-black p-2">⚙️</Link>
           ) : (
             <Link to="/settings" className="text-gray-600 hover:text-black p-2">⚙️</Link>
           )}
           <Link to="/wishlist" className="text-gray-600 hover:text-black p-2">♡</Link>
-          <Link to="/profile" className="text-gray-600 hover:text-black p-2">👤</Link>
-          <Link to="/cart" className="text-gray-600 hover:text-black p-2 text-lg">🛒</Link>
+          
+          {user || admin ? (
+            <>
+              <Link to="/profile" className="text-gray-600 hover:text-black p-2" title={user ? `${user.first_name} ${user.last_name}` : 'Admin'}>
+                👤 {user ? user.first_name : 'Admin'}
+              </Link>
+              <button onClick={handleLogout} className="text-gray-600 hover:text-black p-2 text-sm">
+                Logout
+              </button>
+            </>
+          ) : (
+            <Link to="/login" className="text-gray-600 hover:text-black p-2">Login</Link>
+          )}
+          
+          <Link to="/cart" className="text-gray-600 hover:text-black p-2 text-lg relative">
+            🛒
+            {cartItems.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {cartItems.length}
+              </span>
+            )}
+          </Link>
         </div>
       </div>
     </header>

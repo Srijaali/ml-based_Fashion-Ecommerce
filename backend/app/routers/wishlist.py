@@ -4,13 +4,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.customer_auth import CustomerResponse, get_current_customer
+from app.customer_auth import get_current_customer, CustomerResponse
 from app.db.database import get_db
-from app.schemas.wishlist import WishlistCreate, WishlistOut
+from app.db.models.wishlist import Wishlist
+from app.dependencies import AdminResponse, get_current_admin
+from app.schemas.wishlist import (
+    WishlistBase,
+    WishlistCreate,
+    WishlistOut,
+    AddToWishlistRequest  # Import the new model
+)
 
 router = APIRouter()
-
-
 
 
 @router.get("/")
@@ -23,8 +28,8 @@ def get_customer_wishlist(
         text("""
             SELECT w.wishlist_id, w.article_id, 
                    a.name, a.price, a.stock
-            FROM wishlist w
-            JOIN articles a ON w.article_id = a.article_id
+            FROM niche_data.wishlist w
+            JOIN niche_data.articles a ON w.article_id = a.article_id
             WHERE w.customer_id = :customer_id
         """),
         {"customer_id": current_customer.customer_id}
@@ -41,19 +46,23 @@ def get_customer_wishlist(
         for item in wishlist_items
     ]
 
+
 @router.post("/add")
 def add_to_wishlist(
-    article_id: int,
+    payload: AddToWishlistRequest,  # Accept request body instead of query params
     current_customer: CustomerResponse = Depends(get_current_customer),
     db: Session = Depends(get_db)
 ):
     """Add item to wishlist (requires authentication)"""
     
+    # Extract article_id from payload
+    article_id = payload.article_id
+    
     # Check if already in wishlist
     existing = db.execute(
         text("""
             SELECT wishlist_id 
-            FROM wishlist 
+            FROM niche_data.wishlist 
             WHERE customer_id = :customer_id AND article_id = :article_id
         """),
         {
@@ -67,7 +76,7 @@ def add_to_wishlist(
     
     db.execute(
         text("""
-            INSERT INTO wishlist (customer_id, article_id, created_at)
+            INSERT INTO niche_data.wishlist (customer_id, article_id, added_at)
             VALUES (:customer_id, :article_id, NOW())
         """),
         {
@@ -78,8 +87,6 @@ def add_to_wishlist(
     db.commit()
     
     return {"message": "Item added to wishlist"}
-
-
 
 
 # ---------------- Get wishlist for 1 customer - Customer authenticated ----------------
@@ -148,6 +155,7 @@ def add_to_wishlist_authenticated(
 
     db.commit()
     return inserted
+
 
 @router.post("/move-to-cart/{wishlist_id}")
 def move_wishlist_to_cart(
@@ -220,6 +228,7 @@ def move_wishlist_to_cart(
 
     return {"detail": "Item moved from wishlist to cart successfully"}
 
+
 # ---------------- Delete specific wishlist item - Customer authenticated ----------------
 @router.delete("/item/{wishlist_id}")
 def delete_wishlist_item(
@@ -279,14 +288,3 @@ def clear_customer_wishlist(
     
     db.commit()
     return {"detail": "Wishlist cleared"}
-
-
-
-
-
-
-
-
-
-
-

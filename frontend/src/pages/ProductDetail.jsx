@@ -1,22 +1,26 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { fetchProductById, fetchReviewsByProduct, fetchRelatedProducts, fetchSimilarProducts, postReview } from "../api/api";
+import { useParams, useNavigate } from "react-router-dom";
+import { articles, reviews as reviewsAPI } from "../api/api";
+import { useApp } from "../context/AppContext";
 import ReviewItem from "../components/ReviewItem";
 import ProductCard from "../components/ProductCard";
 
 export default function ProductDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { user, addToCart, addToWishlist, isAuthenticated } = useApp();
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [similarProducts, setSimilarProducts] = useState([]);
   const [newReview, setNewReview] = useState({
-    customer_id: "",
     rating: 5,
     review_text: ""
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
+  const [isAddingToWishlist, setIsAddingToWishlist] = useState(false);
 
   // Demo product data
   const demoProducts = {
@@ -219,43 +223,30 @@ export default function ProductDetail() {
       try {
         console.log("Fetching product with ID:", id);
         
-        // Try to fetch from API first
+        // Fetch product
+        const productRes = await articles.getById(id);
+        console.log("Product response:", productRes);
+        setProduct(productRes.data);
+        
+        // Fetch reviews
         try {
-          const productRes = await fetchProductById(id);
-          console.log("Product response:", productRes);
-          setProduct(productRes.data);
-          
-          // Fetch reviews
-          const reviewsRes = await fetchReviewsByProduct(id);
+          const reviewsRes = await reviewsAPI.getByArticle(id);
           console.log("Reviews response:", reviewsRes);
           setReviews(reviewsRes.data || []);
-          
-          // Fetch related products
-          const relatedRes = await fetchRelatedProducts(id);
-          console.log("Related products response:", relatedRes);
-          setRelatedProducts(relatedRes.data || []);
-          
-          // Fetch similar products
-          const similarRes = await fetchSimilarProducts(id);
-          console.log("Similar products response:", similarRes);
-          setSimilarProducts(similarRes.data || []);
-        } catch (apiError) {
-          // If API fails, use demo data
-          console.log("API failed, using demo data");
-          const demoProduct = demoProducts[id] || Object.values(demoProducts)[0];
-          setProduct(demoProduct);
-          setReviews(demoReviews);
-          setRelatedProducts(demoRelatedProducts);
-          setSimilarProducts(demoSimilarProducts);
+        } catch (err) {
+          console.log("No reviews found");
+          setReviews([]);
         }
+        
+        // Fetch related/similar products (just get some other products)
+        const allProductsRes = await articles.getAll(0, 8);
+        const allProducts = allProductsRes.data || [];
+        setRelatedProducts(allProducts.slice(0, 4));
+        setSimilarProducts(allProducts.slice(4, 8));
+        
       } catch (err) {
         console.error("Error fetching product data:", err);
-        // Use demo data as fallback
-        const demoProduct = demoProducts[id] || Object.values(demoProducts)[0];
-        setProduct(demoProduct);
-        setReviews(demoReviews);
-        setRelatedProducts(demoRelatedProducts);
-        setSimilarProducts(demoSimilarProducts);
+        setError("Failed to load product. Please try again.");
       }
     };
 
@@ -266,50 +257,40 @@ export default function ProductDetail() {
 
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
-    if (!newReview.customer_id || !newReview.review_text) return;
+    
+    if (!isAuthenticated) {
+      alert('Please login to write a review');
+      navigate('/login');
+      return;
+    }
+    
+    if (!newReview.review_text) return;
     
     setIsSubmitting(true);
     try {
       const reviewData = {
-        ...newReview,
-        article_id: id
+        customer_id: user.customer_id,
+        article_id: id,
+        rating: newReview.rating,
+        review_text: newReview.review_text
       };
       
-      await postReview(reviewData);
+      await reviewsAPI.create(reviewData);
       
-      // Add the new review to the list
-      const newReviewWithId = {
-        ...reviewData,
-        review_id: Date.now(), // Simple ID for demo
-        created_at: new Date().toISOString()
-      };
-      
-      setReviews(prev => [...prev, newReviewWithId]);
+      // Reload reviews
+      const reviewsRes = await reviewsAPI.getByArticle(id);
+      setReviews(reviewsRes.data || []);
       
       // Reset form
       setNewReview({
-        customer_id: "",
         rating: 5,
         review_text: ""
       });
+      
+      alert('Review submitted successfully!');
     } catch (err) {
       console.error("Failed to submit review:", err);
-      // For demo purposes, still add the review even if API fails
-      const newReviewWithId = {
-        ...newReview,
-        review_id: Date.now(),
-        article_id: id,
-        created_at: new Date().toISOString()
-      };
-      
-      setReviews(prev => [...prev, newReviewWithId]);
-      
-      // Reset form
-      setNewReview({
-        customer_id: "",
-        rating: 5,
-        review_text: ""
-      });
+      alert('Failed to submit review. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -352,11 +333,11 @@ export default function ProductDetail() {
         <div className="w-full">
           <div className="w-full aspect-square max-h-[70vh] bg-gray-100 rounded-xl overflow-hidden flex items-center justify-center relative">
             <img
-              src={`/products/${product.image || 'placeholder.jpg'}`}
+              src={`/images/${product.image_path || 'placeholder.jpg'}`}
               alt={product.prod_name}
               className="absolute inset-0 w-full h-full object-contain"
               onError={(e) => {
-                e.target.src = '/products/placeholder.jpg';
+                e.target.src = '/images/placeholder.jpg';
               }}
             />
           </div>
@@ -371,37 +352,74 @@ export default function ProductDetail() {
           <p className="mb-2 text-gray-600">Color: <span className="font-medium">{product.colour_group_name}</span></p>
           <p className="mb-6 text-gray-600">Type: <span className="font-medium">{product.product_type_name}</span></p>
           <div className="flex flex-col sm:flex-row gap-4 mb-8">
-            <button className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-              Add to Cart
-            </button>
-            <button className="bg-gray-200 text-black px-6 py-3 rounded-lg font-medium hover:bg-gray-300 transition-colors">
-              Add to Wishlist
-            </button>
-            {/* Buy Now Button */}
             <button 
-              onClick={() => {
-                // Add to cart and navigate to cart page
-                // In a real implementation, you would:
-                // 1. Add product to cart (using localStorage or API)
-                // 2. Navigate to cart page
-                const cart = JSON.parse(localStorage.getItem('cart') || '[]');
-                const existingItem = cart.find(item => item.article_id === product.article_id);
-                
-                if (existingItem) {
-                  existingItem.quantity += 1;
-                } else {
-                  cart.push({
-                    ...product,
-                    quantity: 1
-                  });
+              onClick={async () => {
+                if (!isAuthenticated) {
+                  alert('Please login to add items to cart');
+                  navigate('/login');
+                  return;
                 }
                 
-                localStorage.setItem('cart', JSON.stringify(cart));
-                window.location.href = '/cart'; // Navigate to cart page
+                setIsAddingToCart(true);
+                const result = await addToCart(product.article_id, 1);
+                setIsAddingToCart(false);
+                
+                if (result.success) {
+                  alert('Added to cart!');
+                } else {
+                  alert(result.error || 'Failed to add to cart');
+                }
               }}
-              className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors"
+              disabled={isAddingToCart}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Buy Now
+              {isAddingToCart ? 'Adding to Cart...' : 'Add to Cart'}
+            </button>
+            <button 
+              onClick={async () => {
+                if (!isAuthenticated) {
+                  alert('Please login to add items to wishlist');
+                  navigate('/login');
+                  return;
+                }
+                
+                setIsAddingToWishlist(true);
+                const result = await addToWishlist(product.article_id);
+                setIsAddingToWishlist(false);
+                
+                if (result.success) {
+                  alert('Added to wishlist!');
+                } else {
+                  alert(result.error || 'Failed to add to wishlist');
+                }
+              }}
+              disabled={isAddingToWishlist}
+              className="bg-gray-200 text-black px-6 py-3 rounded-lg font-medium hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isAddingToWishlist ? 'Adding to Wishlist...' : 'Add to Wishlist'}
+            </button>
+            <button 
+              onClick={async () => {
+                if (!isAuthenticated) {
+                  alert('Please login to purchase');
+                  navigate('/login');
+                  return;
+                }
+                
+                setIsAddingToCart(true);
+                const result = await addToCart(product.article_id, 1);
+                setIsAddingToCart(false);
+                
+                if (result.success) {
+                  navigate('/cart');
+                } else {
+                  alert(result.error || 'Failed to add to cart');
+                }
+              }}
+              disabled={isAddingToCart}
+              className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isAddingToCart ? 'Adding to Cart...' : 'Buy Now'}
             </button>
           </div>
           
@@ -421,20 +439,7 @@ export default function ProductDetail() {
         <div className="border rounded-lg p-6 mb-8">
           <h3 className="text-xl font-semibold mb-4">Write a Review</h3>
           <form onSubmit={handleReviewSubmit}>
-            <div className="mb-4">
-              <label htmlFor="customer_id" className="block text-sm font-medium text-gray-700 mb-1">
-                Your Name
-              </label>
-              <input
-                type="text"
-                id="customer_id"
-                value={newReview.customer_id}
-                onChange={(e) => setNewReview({...newReview, customer_id: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-                placeholder="Enter your name"
-              />
-            </div>
+
             
             <div className="mb-4">
               <label htmlFor="rating" className="block text-sm font-medium text-gray-700 mb-1">

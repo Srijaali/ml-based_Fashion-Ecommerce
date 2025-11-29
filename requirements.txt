@@ -1,0 +1,27 @@
+fastapi==0.110.0
+uvicorn==0.29.0
+
+# Database & ORM
+sqlalchemy==2.0.29
+psycopg2-binary==2.9.9
+
+# Env variables
+python-dotenv==1.0.1
+
+# JWT Auth
+PyJWT==2.8.0
+python-multipart==0.0.9
+
+# Password hashing (bcrypt via passlib)
+passlib==1.7.4
+bcrypt==4.1.2
+
+# Pydantic v2
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# Caching Utilities
+cachetools==5.3.2
+
+# Optional but used by many FastAPI setups
+typing_extensions==4.10.0

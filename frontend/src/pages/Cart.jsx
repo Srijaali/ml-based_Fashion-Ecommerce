@@ -1,101 +1,54 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import CartItem from "../components/CartItem";
-import { api } from "../api/api";
+import { useApp } from "../context/AppContext";
 
 export default function Cart() {
-  const [cartItems, setCartItems] = useState([]);
+  const { user, cartItems, removeFromCart, updateCartItem, loadCart } = useApp();
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // First check localStorage for items added via "Buy Now"
-    const localCart = JSON.parse(localStorage.getItem('cart') || '[]');
-    
-    if (localCart.length > 0) {
-      // Convert local cart items to the format expected by CartItem component
-      const formattedItems = localCart.map((item, index) => ({
-        order_item_id: `local_${index}_${item.article_id}`,
-        article_id: item.article_id,
-        prod_name: item.prod_name,
-        unit_price: item.price,
-        quantity: item.quantity,
-        image: item.image
-      }));
-      
-      setCartItems(formattedItems);
+    if (user) {
+      loadCart(user.customer_id)
+        .finally(() => setLoading(false));
+    } else {
       setLoading(false);
-    } else {
-      // Fetch cart items for current user from API
-      setLoading(true);
-      api.get("/order_items?limit=50")
-        .then(res => {
-          setCartItems(res.data || []);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error(err);
-          setLoading(false);
-        });
     }
-  }, []);
+  }, [user]);
 
-  const removeItem = (id) => {
-    // Check if it's a local item
-    if (id.startsWith('local_')) {
-      const localCart = JSON.parse(localStorage.getItem('cart') || '[]');
-      const itemIndex = localCart.findIndex((_, index) => `local_${index}_${localCart[index].article_id}` === id);
-      
-      if (itemIndex !== -1) {
-        localCart.splice(itemIndex, 1);
-        localStorage.setItem('cart', JSON.stringify(localCart));
-        setCartItems(cartItems.filter(item => item.order_item_id !== id));
-      }
-    } else {
-      api.delete(`/order_items/${id}`)
-        .then(() => setCartItems(cartItems.filter(item => item.order_item_id !== id)))
-        .catch(err => console.error(err));
+  const handleRemove = async (cartId) => {
+    const result = await removeFromCart(cartId);
+    if (!result.success) {
+      alert(result.error || 'Failed to remove item');
     }
   };
 
-  const updateQuantity = (id, newQuantity) => {
+  const handleUpdateQuantity = async (cartId, newQuantity) => {
     if (newQuantity < 1) {
-      removeItem(id);
+      handleRemove(cartId);
       return;
     }
     
-    // Check if it's a local item
-    if (id.startsWith('local_')) {
-      const localCart = JSON.parse(localStorage.getItem('cart') || '[]');
-      const itemIndex = localCart.findIndex((_, index) => `local_${index}_${localCart[index].article_id}` === id);
-      
-      if (itemIndex !== -1) {
-        localCart[itemIndex].quantity = newQuantity;
-        localStorage.setItem('cart', JSON.stringify(localCart));
-        setCartItems(cartItems.map(item => 
-          item.order_item_id === id ? { ...item, quantity: newQuantity } : item
-        ));
-      }
-    } else {
-      api.put(`/order_items/${id}`, { quantity: newQuantity })
-        .then(() => {
-          setCartItems(cartItems.map(item => 
-            item.order_item_id === id ? { ...item, quantity: newQuantity } : item
-          ));
-        })
-        .catch(err => console.error(err));
+    const result = await updateCartItem(cartId, newQuantity);
+    if (!result.success) {
+      alert(result.error || 'Failed to update quantity');
     }
   };
 
-  const subtotal = cartItems.reduce((sum, item) => sum + (item.unit_price || 0) * item.quantity, 0);
+  // Calculate totals from cart items
+  const subtotal = cartItems.reduce((sum, item) => {
+    const price = item.price || 0;
+    const quantity = item.quantity || 0;
+    return sum + (price * quantity);
+  }, 0);
+  
   const tax = subtotal * 0.1; // 10% tax
   const shipping = subtotal > 100 ? 0 : 10; // Free shipping over $100
   const total = subtotal + tax + shipping;
 
   const handleCheckout = () => {
     if (cartItems.length > 0) {
-      // If we have local cart items, we might want to save them to the database
-      // For now, we'll just navigate to checkout
       navigate('/checkout');
     }
   };
@@ -147,10 +100,17 @@ export default function Cart() {
           <div className="md:col-span-2 space-y-4">
             {cartItems.map(item => (
               <CartItem
-                key={item.order_item_id}
-                item={item}
-                onRemove={removeItem}
-                onUpdateQuantity={updateQuantity}
+                key={item.cart_id}
+                item={{
+                  order_item_id: item.cart_id,
+                  article_id: item.article_id,
+                  prod_name: item.article_name || item.name,
+                  unit_price: item.price,
+                  quantity: item.quantity,
+                  image: item.image
+                }}
+                onRemove={() => handleRemove(item.cart_id)}
+                onUpdateQuantity={(id, qty) => handleUpdateQuantity(item.cart_id, qty)}
               />
             ))}
           </div>

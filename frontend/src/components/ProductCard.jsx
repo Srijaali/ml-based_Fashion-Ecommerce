@@ -1,14 +1,21 @@
-import { Link } from "react-router-dom";
-import SettingsIcon from "./SettingsIcon"; // Adjust path as needed
+import { Link, useNavigate } from "react-router-dom";
+import { useApp } from "../context/AppContext";
+import SettingsIcon from "./SettingsIcon";
+import { useState } from "react";
 
 export default function ProductCard({ product, isAdmin }) {
-  console.log("ProductCard received:", product); // Debug
+  const navigate = useNavigate();
+  const { addToCart, addToWishlist, isAuthenticated } = useApp();
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
+  const [isAddingToWishlist, setIsAddingToWishlist] = useState(false);
 
   // Handle demo products that might not have all fields
   const productId = product.article_id || product.id || product.productId || '108775015';
   const productName = product.prod_name || product.name || 'Product Name';
   const productPrice = product.price || product.Price || 0;
-  const productImage = product.image || product.Image || 'placeholder.jpg';
+  const productImage = product.image_path || product.Image || 'placeholder.jpg';
+
+
 
   return (
     <div className="group">
@@ -18,12 +25,12 @@ export default function ProductCard({ product, isAdmin }) {
           {/* Image box */}
           <div className="w-full aspect-[4/3] bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center relative">
             <img
-              src={`/products/${productImage}`}
+              src={`/images/${productImage}`}
               alt={productName}
               className="absolute inset-0 w-full h-full object-contain transition-transform duration-300 group-hover:scale-110"
               onError={(e) => {
-                console.log("Failed to load image:", `/products/${productImage}`);
-                e.target.src = "/products/placeholder.jpg";
+                console.log("Failed to load image:", `/images/${productImage}`);
+                e.target.src = "/images/placeholder.jpg";
               }}
             />
           </div>
@@ -47,37 +54,91 @@ export default function ProductCard({ product, isAdmin }) {
         </div>
       </Link>
       
-      {/* Buy Now Button */}
-      <div className="mt-2">
+      {/* Action Buttons */}
+      <div className="mt-2 flex gap-2">
+        {/* Add to Cart */}
         <button 
-          onClick={(e) => {
+          onClick={async (e) => {
             e.stopPropagation();
-            // Add to cart and navigate to cart page
-            const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+            e.preventDefault();
             
-            // Handle demo products that might not have all fields
-            const cartItem = {
-              article_id: productId,
-              prod_name: productName,
-              price: productPrice,
-              image: productImage,
-              quantity: 1
-            };
-            
-            const existingItem = cart.find(item => item.article_id === productId);
-            
-            if (existingItem) {
-              existingItem.quantity += 1;
-            } else {
-              cart.push(cartItem);
+            if (!isAuthenticated) {
+              alert('Please login to add items to cart');
+              navigate('/login');
+              return;
             }
             
-            localStorage.setItem('cart', JSON.stringify(cart));
-            window.location.href = '/cart'; // Navigate to cart page
+            setIsAddingToCart(true);
+            const result = await addToCart(productId, 1);
+            setIsAddingToCart(false);
+            
+            if (result.success) {
+              alert('Added to cart!');
+            } else {
+              alert(result.error || 'Failed to add to cart');
+            }
           }}
-          className="w-full bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+          disabled={isAddingToCart}
+          className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Buy Now
+          {isAddingToCart ? 'Adding...' : 'Add to Cart'}
+        </button>
+        
+        {/* Add to Wishlist */}
+        <button 
+          onClick={async (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            if (!isAuthenticated) {
+              alert('Please login to add items to wishlist');
+              navigate('/login');
+              return;
+            }
+            
+            setIsAddingToWishlist(true);
+            const result = await addToWishlist(productId);
+            setIsAddingToWishlist(false);
+            
+            if (result.success) {
+              alert('Added to wishlist!');
+            } else {
+              alert(result.error || 'Failed to add to wishlist');
+            }
+          }}
+          disabled={isAddingToWishlist}
+          className="px-3 bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Add to Wishlist"
+        >
+          {isAddingToWishlist ? '...' : '♡'}
+        </button>
+        
+        {/* Buy Now */}
+        <button 
+          onClick={async (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            if (!isAuthenticated) {
+              alert('Please login to purchase');
+              navigate('/login');
+              return;
+            }
+            
+            setIsAddingToCart(true);
+            const result = await addToCart(productId, 1);
+            setIsAddingToCart(false);
+            
+            if (result.success) {
+              navigate('/cart');
+            } else {
+              alert(result.error || 'Failed to add to cart');
+            }
+          }}
+          disabled={isAddingToCart}
+          className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isAddingToCart ? 'Adding...' : 'Buy Now'}
         </button>
       </div>
     </div>

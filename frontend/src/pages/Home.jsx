@@ -1,87 +1,43 @@
 import ProductCard from "../components/ProductCard";
 import Button from "../components/Button";
-import { fetchProducts, fetchTrendingProducts } from "../api/api";
+import { sections, articles } from "../api/api";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 export default function Home() {
-  const [products, setProducts] = useState([]);
-  const [trendingProducts, setTrendingProducts] = useState([]);
-  const [activeCategory, setActiveCategory] = useState("women");
+  const [featuredProducts, setFeaturedProducts] = useState([]);
+  const [sectionsList, setSectionsList] = useState([]);
+  const [activeSection, setActiveSection] = useState("women");
+  const [sectionProducts, setSectionProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const tempProducts = [
-      {
-        article_id: 1,
-        prod_name: "Black Minimal Jacket",
-        price: 120,
-        image: "product1.png",
-      },
-      {
-        article_id: 2,
-        prod_name: "Grey Urban Hoodie",
-        price: 90,
-        image: "product2.png",
-      },
-      {
-        article_id: 3,
-        prod_name: "Olive Overshirt",
-        price: 110,
-        image: "product3.png",
-      },
-      {
-        article_id: 4,
-        prod_name: "Classic Denim Jacket",
-        price: 150,
-        image: "product4.png",
-      },
-      {
-        article_id: 5,
-        prod_name: "Stone Cargo Jacket",
-        price: 160,
-        image: "product5.png",
-      },
-      {
-        article_id: 6,
-        prod_name: "Ember",
-        price: 40,
-        image: "beanie1.jpg",
-      },
-      {
-        article_id: 7,
-        prod_name: "Obsidian",
-        price: 190,
-        image: "beanie2.jpg",
-      },
-      {
-        article_id: 8,
-        prod_name: "Ecru",
-        price: 80,
-        image: "beanie3.jpg",
-      },
-    ];
+    // Load sections
+    sections.getSections()
+      .then(res => {
+        setSectionsList(res.data.sections || []);
+      })
+      .catch(err => console.error('Failed to load sections:', err));
 
-    setProducts(tempProducts);
-    
-    // Fetch trending products
-    fetchTrendingProducts(8)
-      .then(res => setTrendingProducts(res.data || []))
-      .catch(() => setTrendingProducts([]));
+    // Load featured products
+    articles.getAll(0, 8)
+      .then(res => {
+        setFeaturedProducts(res.data || []);
+      })
+      .catch(err => console.error('Failed to load products:', err))
+      .finally(() => setLoading(false));
   }, []);
 
-  // Filter products based on active category
-  const filteredProducts = products.filter(product => {
-    if (activeCategory === "women") {
-      return product.prod_name.includes("Urban") || product.prod_name.includes("Overshirt") || product.prod_name.includes("Ecru");
-    } else if (activeCategory === "men") {
-      return product.prod_name.includes("Minimal") || product.prod_name.includes("Denim") || product.prod_name.includes("Cargo");
-    } else if (activeCategory === "kids") {
-      return product.prod_name.includes("Ember") || product.prod_name.includes("Obsidian");
-    } else if (activeCategory === "accessories") {
-      return product.prod_name.includes("Ember") || product.prod_name.includes("Obsidian") || product.prod_name.includes("Ecru");
+  useEffect(() => {
+    // Load section products when active section changes
+    if (activeSection) {
+      sections.getSectionProducts(activeSection, 8)
+        .then(res => {
+          setSectionProducts(res.data.products || []);
+        })
+        .catch(err => console.error('Failed to load section products:', err));
     }
-    return true;
-  });
+  }, [activeSection]);
 
   return (
     <div>
@@ -100,57 +56,52 @@ export default function Home() {
                 Outerwear for the
                 <span className="block">Modern You</span>
               </h1>
-              <Button className="bg-blue-600 text-white hover:bg-blue-700">Discover Now</Button>
+              <Link to="/products">
+                <Button className="bg-blue-600 text-white hover:bg-blue-700">Discover Now</Button>
+              </Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* TRENDING ARTICLES */}
-      {trendingProducts.length > 0 && (
-        <section className="app-container mt-16">
-          <h2 className="text-3xl font-semibold text-gray-900 text-center mb-10">Trending Articles</h2>
+      {/* FEATURED PRODUCTS */}
+      <section className="app-container mt-16">
+        <h2 className="text-3xl font-semibold text-gray-900 text-center mb-10">Featured Products</h2>
+        {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {trendingProducts.map((product) => (
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="card-neutral p-4">
+                <div className="h-44 bg-gray-50 animate-pulse rounded-md"></div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {featuredProducts.map((product) => (
               <ProductCard key={product.article_id} product={product} />
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
-      {/* NEW ARRIVALS */}
+      {/* NEW ARRIVALS BY SECTION */}
       <section className="app-container mt-16">
         <h2 className="text-3xl font-semibold text-gray-900 text-center">New Arrivals</h2>
-        <div className="flex justify-center mt-6 text-sm text-gray-500 space-x-6">
-          <button 
-            className={`pb-1 ${activeCategory === "women" ? "border-b-2 border-gray-900" : ""}`}
-            onClick={() => setActiveCategory("women")}
-          >
-            Women
-          </button>
-          <button 
-            className={`pb-1 ${activeCategory === "men" ? "border-b-2 border-gray-900" : ""}`}
-            onClick={() => setActiveCategory("men")}
-          >
-            Men
-          </button>
-          <button 
-            className={`pb-1 ${activeCategory === "kids" ? "border-b-2 border-gray-900" : ""}`}
-            onClick={() => setActiveCategory("kids")}
-          >
-            Kids
-          </button>
-          <button 
-            className={`pb-1 ${activeCategory === "accessories" ? "border-b-2 border-gray-900" : ""}`}
-            onClick={() => setActiveCategory("accessories")}
-          >
-            Accessories
-          </button>
+        <div className="flex justify-center mt-6 text-sm text-gray-500 space-x-6 flex-wrap">
+          {sectionsList.map((section) => (
+            <button
+              key={section.id}
+              className={`pb-1 ${activeSection === section.name ? "border-b-2 border-gray-900" : ""}`}
+              onClick={() => setActiveSection(section.name)}
+            >
+              {section.display}
+            </button>
+          ))}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-10 mt-10">
-          {filteredProducts.length
-            ? filteredProducts.map((p) => (
+          {sectionProducts.length > 0
+            ? sectionProducts.map((p) => (
                 <ProductCard key={p.article_id} product={p} />
               ))
             : Array.from({ length: 8 }).map((_, i) => (
@@ -161,32 +112,12 @@ export default function Home() {
         </div>
       </section>
 
-      {/* BASED ON YOUR INTERACTIONS */}
-      <section className="app-container mt-16">
-        <h2 className="text-3xl font-semibold text-gray-900 text-center mb-10">Based on Your Interactions</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {products.slice(0, 4).map((product) => (
-            <ProductCard key={`interaction-${product.article_id}`} product={product} />
-          ))}
-        </div>
-      </section>
-
-      {/* CUSTOMERS ALSO BOUGHT */}
-      <section className="app-container mt-16">
-        <h2 className="text-3xl font-semibold text-gray-900 text-center mb-10">Customers Also Bought</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {products.slice(4).map((product) => (
-            <ProductCard key={`bought-${product.article_id}`} product={product} />
-          ))}
-        </div>
-      </section>
-
       {/* CATEGORY CARDS */}
       <section className="app-container mt-16 grid grid-cols-1 md:grid-cols-4 gap-6 mb-20">
         <div 
           className="bg-gray-50 rounded-xl p-6 md:p-8 flex flex-col justify-between aspect-[4/3] min-h-[250px]"
           style={{ 
-            backgroundImage: "url('/products/men.jpg')",
+            backgroundImage: "url('/images/men.jpg')",
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat'
@@ -196,7 +127,7 @@ export default function Home() {
             <h3 className="text-xl sm:text-2xl font-semibold mb-2 text-white drop-shadow-lg">Where Men Meet Luxury</h3>
             <p className="text-gray-100 drop-shadow-md mb-4">Layer Up for Winter.</p>
           </div>
-          <Link to="/products?gender=men">
+          <Link to="/products?section=men">
             <Button className="bg-white text-black self-start">Shop Now</Button>
           </Link>
         </div>
@@ -204,7 +135,7 @@ export default function Home() {
         <div
           className="bg-gray-50 rounded-xl p-6 md:p-8 flex flex-col justify-between aspect-[4/3] min-h-[250px]"
           style={{ 
-            backgroundImage: "url('/products/women.png')",
+            backgroundImage: "url('/images/women.png')",
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat'
@@ -214,7 +145,7 @@ export default function Home() {
             <h3 className="text-xl sm:text-2xl font-semibold mb-2 text-white drop-shadow-lg">Layers Made for Her</h3>
             <p className="text-gray-100 drop-shadow-md mb-4">Winter essentials, reimagined.</p>
           </div>
-          <Link to="/products?gender=women">
+          <Link to="/products?section=women">
             <Button className="bg-white text-black self-start">Shop Now</Button>
           </Link>
         </div>
@@ -222,7 +153,7 @@ export default function Home() {
         <div
           className="bg-gray-50 rounded-xl p-6 md:p-8 flex flex-col justify-between aspect-[4/3] min-h-[250px]"
           style={{ 
-            backgroundImage: "url('/products/kids.jpg')",
+            backgroundImage: "url('/images/kids.jpg')",
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat'
@@ -232,7 +163,7 @@ export default function Home() {
             <h3 className="text-xl sm:text-2xl font-semibold mb-2 text-white drop-shadow-lg">Style for Little Ones</h3>
             <p className="text-gray-100 drop-shadow-md mb-4">Comfortable and trendy.</p>
           </div>
-          <Link to="/products?category=kids">
+          <Link to="/products?section=kids">
             <Button className="bg-white text-black self-start">Shop Now</Button>
           </Link>
         </div>
@@ -240,7 +171,7 @@ export default function Home() {
         <div
           className="bg-gray-50 rounded-xl p-6 md:p-8 flex flex-col justify-between aspect-[4/3] min-h-[250px]"
           style={{ 
-            backgroundImage: "url('/products/accessories.jpg')",
+            backgroundImage: "url('/images/accessories.jpg')",
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat'
@@ -250,7 +181,7 @@ export default function Home() {
             <h3 className="text-xl sm:text-2xl font-semibold mb-2 text-white drop-shadow-lg">Accessorize Your Look</h3>
             <p className="text-gray-100 drop-shadow-md mb-4">The perfect finishing touches.</p>
           </div>
-          <Link to="/products?category=accessories">
+          <Link to="/products?section=accessories">
             <Button className="bg-white text-black self-start">Shop Now</Button>
           </Link>
         </div>

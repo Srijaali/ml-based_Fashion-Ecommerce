@@ -22,6 +22,7 @@ class Article(Base):
     price = Column(Float)
     stock = Column(Integer)
     category_id = Column(Integer, ForeignKey("categories.category_id"))
+    image_path = Column(String(255))
     
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     last_updated = Column(TIMESTAMP(timezone=True), onupdate=func.now())

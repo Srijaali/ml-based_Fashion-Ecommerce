@@ -217,6 +217,7 @@ def get_category_products(
         section=section,
         category=category_name,
         sorting=sort_option,
+        total_products=total,
         products=products,
     )
     cache_set(cache_key, response, ttl_seconds=20)

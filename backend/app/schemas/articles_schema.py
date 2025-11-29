@@ -42,9 +42,33 @@ class ArticleResponse(ArticleBase):
     price: float
     stock: int
     category_id: int | None = None
+    image_path: str | None = None
 
     class Config:
         from_attributes = True
+
+class ProductOut(BaseModel):
+    product_id: str
+    name: str
+    price: float
+    image_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+    @classmethod
+    def from_orm(cls, article):
+        # Convert image_path to image_url
+        image_url = None
+        if hasattr(article, 'image_path') and article.image_path:
+            image_url = r"C:\Users\rija\Desktop\db-proj\backend\filtered_images{article.image_path}"
+        
+        return cls(
+            product_id=article.article_id,
+            name=article.prod_name,
+            price=article.price,
+            image_url=image_url
+        )
 
 class ArticleUpdate(ArticleBase):
     article_id: str
@@ -72,7 +96,6 @@ class ArticlePerformanceResponse(BaseModel):
 
     class Config:
         orm_mode = True
-
 
 
 class ArticleDemandTrendResponse(BaseModel):

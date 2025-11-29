@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.staticfiles import StaticFiles
+import os
 
 from app.db.database import Base, engine
 from app.routers import (
@@ -12,6 +14,7 @@ from app.routers import (
     orders,
     order_items,
     reviews,
+    sections,
     transactions,
     wishlist,
     cart,
@@ -26,14 +29,27 @@ app = FastAPI(
 )
 
 # ---- CORS ----
-origins = ["*"]  # change to specific frontend domains later
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "*"
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
+
+# ---- Static Files ----
+# Serve filtered_images directory at /images endpoint
+filtered_images_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "filtered_images")
+if os.path.exists(filtered_images_path):
+    app.mount("/images", StaticFiles(directory=filtered_images_path), name="images")
 
 # ---- Create tables on startup ----
 @app.on_event("startup")
@@ -54,6 +70,7 @@ app.include_router(reviews.router, prefix="/reviews", tags=["Reviews"])
 app.include_router(transactions.router, prefix="/transactions", tags=["Transactions"])
 app.include_router(wishlist.router, prefix="/wishlist", tags=["Wishlist"])
 app.include_router(cart.router, prefix="/cart", tags=["Cart"])
+app.include_router(sections.router, prefix="/sections", tags=["Sections"])
 
 # ---- Root ----
 @app.get("/")
@@ -66,34 +83,29 @@ def custom_openapi():
         return app.openapi_schema
 
     openapi_schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        description=app.description,
+        title="E-Commerce API",
+        version="1.0.0",
+        description="E-Commerce Database Project API",
         routes=app.routes,
     )
 
-    security_schemes = openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})
-    security_schemes.setdefault(
-        "AdminToken",
-        {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT",
-            "description": "Admin JWT generated via /admins/login",
-        },
-    )
-    security_schemes.setdefault(
-        "CustomerToken",
-        {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT",
-            "description": "Customer JWT generated via /customers/auth/login",
-        },
-    )
+    # Forcefully wipe ALL existing security schemes
+    openapi_schema["components"]["securitySchemes"] = {}
+
+    # Insert ONLY our scheme
+    openapi_schema["components"]["securitySchemes"]["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Paste your JWT token from /admins/login or /customers/auth/login"
+    }
+
+    # Apply BearerAuth globally
+    for path, path_item in openapi_schema["paths"].items():
+        for method in path_item:
+            if method in ["get", "post", "put", "delete", "patch"]:
+                if "security" not in path_item[method]:
+                    path_item[method]["security"] = [{"BearerAuth": []}]
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
-
-
-app.openapi = custom_openapi

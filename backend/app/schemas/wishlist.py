@@ -15,5 +15,9 @@ class WishlistCreate(BaseModel):
     customer_id: str
     article_id: str
 
+# Simple payload for adding to wishlist from frontend
+class AddToWishlistRequest(BaseModel):
+    article_id: str
+
 class WishlistOut(WishlistBase):
     pass

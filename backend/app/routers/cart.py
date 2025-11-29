@@ -14,6 +14,7 @@ from app.schemas.cart import (
     CartItemOut,
     CartItemUpdate,
     CartResponse,
+    AddToCartRequest  # Import the new model
 )
 
 router = APIRouter()
@@ -29,9 +30,9 @@ def get_customer_cart(
     cart_items = db.execute(
         text("""
             SELECT c.cart_id, c.article_id, c.quantity, 
-                   a.name, a.price, a.stock
-            FROM cart c
-            JOIN articles a ON c.article_id = a.article_id
+                   a.prod_name as article_name, a.price, a.stock
+            FROM niche_data.cart c
+            JOIN niche_data.articles a ON c.article_id = a.article_id
             WHERE c.customer_id = :customer_id
         """),
         {"customer_id": current_customer.customer_id}
@@ -51,18 +52,21 @@ def get_customer_cart(
 
 @router.post("/add")
 def add_to_cart(
-    article_id: int,
-    quantity: int,
+    payload: AddToCartRequest,  # Accept request body instead of query params
     current_customer: CustomerResponse = Depends(get_current_customer),
     db: Session = Depends(get_db)
 ):
     """Add item to cart (requires authentication)"""
     
+    # Extract values from payload
+    article_id = payload.article_id
+    quantity = payload.quantity
+    
     # Check if item already in cart
     existing = db.execute(
         text("""
             SELECT cart_id, quantity 
-            FROM cart 
+            FROM niche_data.cart 
             WHERE customer_id = :customer_id AND article_id = :article_id
         """),
         {
@@ -75,8 +79,8 @@ def add_to_cart(
         # Update quantity
         db.execute(
             text("""
-                UPDATE cart 
-                SET quantity = quantity + :quantity, updated_at = NOW()
+                UPDATE niche_data.cart 
+                SET quantity = quantity + :quantity, added_at = NOW()
                 WHERE cart_id = :cart_id
             """),
             {"cart_id": existing[0], "quantity": quantity}
@@ -85,8 +89,8 @@ def add_to_cart(
         # Insert new item
         db.execute(
             text("""
-                INSERT INTO cart (customer_id, article_id, quantity, created_at, updated_at)
-                VALUES (:customer_id, :article_id, :quantity, NOW(), NOW())
+                INSERT INTO niche_data.cart (customer_id, article_id, quantity, added_at)
+                VALUES (:customer_id, :article_id, :quantity, NOW())
             """),
             {
                 "customer_id": current_customer.customer_id,

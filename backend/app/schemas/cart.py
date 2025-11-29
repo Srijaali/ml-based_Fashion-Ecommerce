@@ -18,16 +18,18 @@ class CartItemCreate(BaseModel):
     article_id: str
     quantity: int = Field(1, gt=0)
 
+# Simple payload for adding to cart from frontend
+class AddToCartRequest(BaseModel):
+    article_id: str
+    quantity: int = Field(1, gt=0)
 
 # Response when creating/updating an item (single item)
 class CartItemOut(CartItemBase):
     pass
 
-
 # Payload for updating quantity
 class CartItemUpdate(BaseModel):
     quantity: int = Field(..., gt=0)
-
 
 # Response for a full cart
 class CartResponse(BaseModel):

@@ -1,51 +1,64 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchCustomerById } from "../api/api";
+import { useApp } from "../context/AppContext";
+import { orders } from "../api/api";
 
 export default function Profile() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { user: contextUser, logout } = useApp();
   const [activeTab, setActiveTab] = useState("overview");
+  const [loading, setLoading] = useState(true);
+  const [orderData, setOrderData] = useState({
+    ordersCount: 0,
+    totalSpent: 0,
+    latestOrderDate: null
+  });
 
   useEffect(() => {
-    // Check if user is logged in
-    const loggedInUser = localStorage.getItem('loggedInUser');
-    const userId = localStorage.getItem('userId');
-    
-    if (loggedInUser && userId) {
-      // Fetch user data from API
-      fetchCustomerById(userId)
-        .then(res => {
-          const customerData = res.data;
-          // Set user data with default values if not available
-          setUser({
-            id: customerData.customer_id || userId,
-            name: `${customerData.first_name || ''} ${customerData.last_name || ''}`.trim() || 'User',
-            firstName: customerData.first_name || '',
-            lastName: customerData.last_name || '',
-            email: customerData.email || '',
-            phone: customerData.phone || '',
-            loyaltyScore: customerData.loyalty_score || 0,
-            ordersCount: customerData.total_orders || 0,
-            totalSpent: customerData.total_spent || 0,
-            signupDate: customerData.signup_date || '',
-            rfm: {
-              recency: customerData.rfm_recency || 0,
-              frequency: customerData.rfm_frequency || 0,
-              monetary: customerData.rfm_monetary || 0
-            }
-          });
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error('Error fetching user data:', err);
-          setLoading(false);
-        });
-    } else {
+    // Wait for context to load user
+    if (contextUser || contextUser === null) {
       setLoading(false);
     }
-  }, []);
+  }, [contextUser]);
+
+  // Load order data when user is available
+  useEffect(() => {
+    if (contextUser) {
+      orders.getMyOrders()
+        .then(res => {
+          const ordersList = res.data || [];
+          const totalSpent = ordersList.reduce((sum, order) => sum + (order.total_amount || 0), 0);
+          const latestOrder = ordersList.length > 0 ? ordersList[0] : null;
+          
+          setOrderData({
+            ordersCount: ordersList.length,
+            totalSpent: totalSpent,
+            latestOrderDate: latestOrder ? latestOrder.created_at : null
+          });
+        })
+        .catch(err => {
+          console.error('Failed to load order data:', err);
+        });
+    }
+  }, [contextUser]);
+
+  const user = contextUser ? {
+    id: contextUser.customer_id,
+    name: `${contextUser.first_name || ''} ${contextUser.last_name || ''}`.trim() || 'User',
+    firstName: contextUser.first_name || '',
+    lastName: contextUser.last_name || '',
+    email: contextUser.email || '',
+    phone: contextUser.phone || '',
+    loyaltyScore: contextUser.loyalty_score || 0,
+    ordersCount: orderData.ordersCount,
+    totalSpent: orderData.totalSpent,
+    signupDate: contextUser.signup_date || '',
+    rfm: {
+      recency: contextUser.rfm_recency || 0,
+      frequency: contextUser.rfm_frequency || 0,
+      monetary: contextUser.rfm_monetary || 0
+    }
+  } : null;
 
   const getLoyaltyTier = (score) => {
     if (score >= 2000) return { tier: "Platinum", color: "text-purple-600", bgColor: "bg-purple-100", borderColor: "border-purple-500" };
@@ -173,10 +186,7 @@ export default function Profile() {
         <h1 className="text-3xl md:text-4xl font-bold text-gray-900">My Profile</h1>
         <button
           onClick={() => {
-            localStorage.removeItem('loggedInUser');
-            localStorage.removeItem('userId');
-            localStorage.removeItem('isAdmin');
-            window.dispatchEvent(new Event('storage'));
+            logout();
             navigate('/login');
           }}
           className="mt-4 md:mt-0 px-4 py-2 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
@@ -215,200 +225,104 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-8">
-        <div className="border-b border-gray-200">
-          <nav className="flex -mb-px">
-            <button
-              onClick={() => setActiveTab("overview")}
-              className={`py-4 px-6 text-center border-b-2 font-medium text-sm ${
-                activeTab === "overview"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => setActiveTab("account")}
-              className={`py-4 px-6 text-center border-b-2 font-medium text-sm ${
-                activeTab === "account"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              Account Details
-            </button>
-          </nav>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Total Spent Card */}
+        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 bg-green-100 rounded-lg">
+              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+          <h3 className="text-sm font-medium text-gray-600 mb-1">Total Spent</h3>
+          <p className="text-2xl font-bold text-gray-900">{formatCurrency(user.totalSpent)}</p>
+          <p className="text-xs text-gray-500 mt-2">Across all orders</p>
         </div>
 
-        {/* Tab Content */}
-        <div className="p-6">
-          {activeTab === "overview" ? (
-            <div>
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                {/* Loyalty Score Card */}
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 bg-blue-100 rounded-lg">
-                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Loyalty Score</h3>
-                  <p className="text-2xl font-bold text-gray-900">{user.loyaltyScore.toLocaleString()}</p>
-                  <p className="text-xs text-gray-500 mt-2">Points accumulated</p>
-                </div>
-
-                {/* Total Spent Card */}
-                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 bg-green-100 rounded-lg">
-                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Total Spent</h3>
-                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(user.totalSpent)}</p>
-                  <p className="text-xs text-gray-500 mt-2">Across all orders</p>
-                </div>
-
-                {/* Orders Count Card */}
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 bg-purple-100 rounded-lg">
-                      <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Total Orders</h3>
-                  <p className="text-2xl font-bold text-gray-900">{user.ordersCount}</p>
-                  <p className="text-xs text-gray-500 mt-2">Orders placed</p>
-                </div>
-
-                {/* RFM Recency Card */}
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 border border-orange-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-3 bg-orange-100 rounded-lg">
-                      <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Last Order</h3>
-                  <p className="text-2xl font-bold text-gray-900">{user.rfm.recency} days</p>
-                  <p className="text-xs text-gray-500 mt-2">Since last purchase</p>
-                </div>
-              </div>
-
-              {/* RFM Analysis Card */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8 mb-8">
-                <h3 className="text-xl font-semibold text-gray-900 mb-6">RFM Analysis</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="border-l-4 border-blue-500 pl-4">
-                    <h4 className="text-sm font-medium text-gray-600 mb-2">Recency</h4>
-                    <p className="text-3xl font-bold text-gray-900 mb-1">{user.rfm.recency}</p>
-                    <p className="text-xs text-gray-500">Days since last purchase</p>
-                  </div>
-                  <div className="border-l-4 border-green-500 pl-4">
-                    <h4 className="text-sm font-medium text-gray-600 mb-2">Frequency</h4>
-                    <p className="text-3xl font-bold text-gray-900 mb-1">{user.rfm.frequency}</p>
-                    <p className="text-xs text-gray-500">Total number of purchases</p>
-                  </div>
-                  <div className="border-l-4 border-purple-500 pl-4">
-                    <h4 className="text-sm font-medium text-gray-600 mb-2">Monetary</h4>
-                    <p className="text-3xl font-bold text-gray-900 mb-1">{formatCurrency(user.rfm.monetary)}</p>
-                    <p className="text-xs text-gray-500">Total money spent</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8">
-                <h3 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <button
-                    onClick={() => navigate('/orders')}
-                    className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-left"
-                  >
-                    <svg className="w-6 h-6 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    <span className="font-medium text-gray-900">View Orders</span>
-                  </button>
-                  <button
-                    onClick={() => navigate('/wishlist')}
-                    className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-left"
-                  >
-                    <svg className="w-6 h-6 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                    </svg>
-                    <span className="font-medium text-gray-900">My Wishlist</span>
-                  </button>
-                  <button
-                    onClick={() => navigate('/cart')}
-                    className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-left"
-                  >
-                    <svg className="w-6 h-6 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                    </svg>
-                    <span className="font-medium text-gray-900">Shopping Cart</span>
-                  </button>
-                </div>
-              </div>
+        {/* Orders Count Card */}
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 bg-purple-100 rounded-lg">
+              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+              </svg>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                    <p className="text-gray-900">{user.name}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                    <p className="text-gray-900">{user.email}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                    <p className="text-gray-900">{user.phone || 'Not provided'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Member Since</label>
-                    <p className="text-gray-900">{formatDate(user.signupDate)}</p>
-                  </div>
-                </div>
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Account Settings</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Loyalty Tier</label>
-                    <div className={`inline-flex items-center px-3 py-1 rounded-full ${loyaltyTier.bgColor} ${loyaltyTier.color} font-semibold`}>
-                      {loyaltyTier.tier}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Loyalty Points</label>
-                    <p className="text-2xl font-bold text-gray-900">{user.loyaltyScore.toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Orders</label>
-                    <p className="text-2xl font-bold text-gray-900">{user.ordersCount}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Spent</label>
-                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(user.totalSpent)}</p>
-                  </div>
-                </div>
-              </div>
+          </div>
+          <h3 className="text-sm font-medium text-gray-600 mb-1">Total Orders</h3>
+          <p className="text-2xl font-bold text-gray-900">{user.ordersCount}</p>
+          <p className="text-xs text-gray-500 mt-2">Orders placed</p>
+        </div>
+
+        {/* RFM Recency Card */}
+        <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 border border-orange-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 bg-orange-100 rounded-lg">
+              <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
             </div>
-          )}
+          </div>
+          <h3 className="text-sm font-medium text-gray-600 mb-1">Last Order</h3>
+          <p className="text-2xl font-bold text-gray-900">{user.rfm.recency} days</p>
+          <p className="text-xs text-gray-500 mt-2">Since last purchase</p>
+        </div>
+      </div>
+
+      {/* RFM Analysis Card */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8 mb-8">
+        <h3 className="text-xl font-semibold text-gray-900 mb-6">RFM Analysis</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="border-l-4 border-blue-500 pl-4">
+            <h4 className="text-sm font-medium text-gray-600 mb-2">Recency</h4>
+            <p className="text-3xl font-bold text-gray-900 mb-1">{user.rfm.recency}</p>
+            <p className="text-xs text-gray-500">Days since last purchase</p>
+          </div>
+          <div className="border-l-4 border-green-500 pl-4">
+            <h4 className="text-sm font-medium text-gray-600 mb-2">Frequency</h4>
+            <p className="text-3xl font-bold text-gray-900 mb-1">{user.rfm.frequency}</p>
+            <p className="text-xs text-gray-500">Total number of purchases</p>
+          </div>
+          <div className="border-l-4 border-purple-500 pl-4">
+            <h4 className="text-sm font-medium text-gray-600 mb-2">Monetary</h4>
+            <p className="text-3xl font-bold text-gray-900 mb-1">{formatCurrency(user.rfm.monetary)}</p>
+            <p className="text-xs text-gray-500">Total money spent</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8">
+        <h3 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <button
+            onClick={() => navigate('/orders')}
+            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-left"
+          >
+            <svg className="w-6 h-6 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <span className="font-medium text-gray-900">View Orders</span>
+          </button>
+          <button
+            onClick={() => navigate('/wishlist')}
+            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-left"
+          >
+            <svg className="w-6 h-6 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+            <span className="font-medium text-gray-900">My Wishlist</span>
+          </button>
+          <button
+            onClick={() => navigate('/cart')}
+            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-left"
+          >
+            <svg className="w-6 h-6 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+            <span className="font-medium text-gray-900">Shopping Cart</span>
+          </button>
         </div>
       </div>
     </div>

@@ -21,7 +21,7 @@ BEGIN
             WHEN a.product_type_name = 'Jacket' THEN 'jacket'
             WHEN a.product_type_name = 'Beanie' THEN 'beanie'
             WHEN a.product_type_name = 'Trousers'
-                 AND a.section_name IN ('Denim Men','Ladies Denim')
+                 AND (a.section_name ILIKE '%Men%' OR a.section_name ILIKE '%Women%' OR a.section_name ILIKE '%Ladies%' OR a.section_name ILIKE '%Boy%' OR a.section_name ILIKE '%Girl%' OR a.section_name ILIKE '%Baby%' OR a.section_name ILIKE '%Kids%')
                  THEN 'trouser'
             WHEN a.product_group_name = 'Accessories' THEN 'accessory'
             ELSE 'other'

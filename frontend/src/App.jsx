@@ -1,4 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { AppProvider } from './context/AppContext';
+import { ProtectedRoute, ProtectedRouteAdmin } from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import SearchResults from './pages/SearchResults';
@@ -24,33 +26,65 @@ import AdminDashboard from './pages/AdminDashboard';
 
 export default function App() {
   return (
-    <Router>
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-grow">
-          <Routes>
-            <Route path='/' element={<Home />} />
-            <Route path='/products' element={<ProductListing />} />
-            <Route path='/products/:id' element={<ProductDetail />} />
-            <Route path='/cart' element={<Cart />} />
-            <Route path='/wishlist' element={<Wishlist />} />
-            <Route path='/checkout' element={<Checkout />} />
-            <Route path='/orders' element={<OrdersHistory />} />
-            <Route path='/reviews/:productId' element={<Reviews />} />
-            <Route path='/profile' element={<Profile />} />
-            <Route path='/login' element={<Login />} />
-            <Route path='/signup' element={<Signup />} />
-            <Route path='/contact' element={<Contact />} />
-            <Route path='/blog' element={<Blog />} />
-            <Route path='/settings' element={<Settings />} />
-            <Route path='/search' element={<SearchResults />} />
+    <AppProvider>
+      <Router>
+        <div className="flex flex-col min-h-screen">
+          <Navbar />
+          <main className="flex-grow">
+            <Routes>
+              <Route path='/' element={<Home />} />
+              <Route path='/products' element={<ProductListing />} />
+              <Route path='/products/:id' element={<ProductDetail />} />
+              <Route path='/login' element={<Login />} />
+              <Route path='/signup' element={<Signup />} />
+              <Route path='/contact' element={<Contact />} />
+              <Route path='/blog' element={<Blog />} />
+              <Route path='/search' element={<SearchResults />} />
+              
+              {/* Protected Customer Routes */}
+              <Route path='/cart' element={
+                <ProtectedRoute>
+                  <Cart />
+                </ProtectedRoute>
+              } />
+              <Route path='/wishlist' element={
+                <ProtectedRoute>
+                  <Wishlist />
+                </ProtectedRoute>
+              } />
+              <Route path='/checkout' element={
+                <ProtectedRoute>
+                  <Checkout />
+                </ProtectedRoute>
+              } />
+              <Route path='/orders' element={
+                <ProtectedRoute>
+                  <OrdersHistory />
+                </ProtectedRoute>
+              } />
+              <Route path='/profile' element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              } />
+              <Route path='/settings' element={
+                <ProtectedRoute>
+                  <Settings />
+                </ProtectedRoute>
+              } />
+              <Route path='/reviews/:productId' element={<Reviews />} />
 
-            {/* Admin */}
-            <Route path='/admin' element={<AdminDashboard />} />
-          </Routes>
-        </main>
-        <Footer />
-      </div>
-    </Router>
+              {/* Admin Routes */}
+              <Route path='/admin' element={
+                <ProtectedRouteAdmin>
+                  <AdminDashboard />
+                </ProtectedRouteAdmin>
+              } />
+            </Routes>
+          </main>
+          <Footer />
+        </div>
+      </Router>
+    </AppProvider>
   );
 }

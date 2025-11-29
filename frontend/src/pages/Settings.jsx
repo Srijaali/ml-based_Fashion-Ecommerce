@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchCustomerById, updateCustomer } from "../api/api";
+import { useApp } from "../context/AppContext";
+import { customers } from "../api/api";
 
 export default function Settings() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, isAuthenticated } = useApp();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("name");
   const [formData, setFormData] = useState({
@@ -16,39 +17,21 @@ export default function Settings() {
   const [message, setMessage] = useState({ type: "", text: "" });
 
   useEffect(() => {
-    const loggedInUser = localStorage.getItem('loggedInUser');
-    const userId = localStorage.getItem('userId');
-    
-    if (loggedInUser && userId) {
-      // Try to fetch from API, but fallback to localStorage for demo
-      fetchCustomerById(userId)
-        .then(res => {
-          const customerData = res.data;
-          setUser(customerData);
-          setFormData({
-            firstName: customerData.first_name || "",
-            lastName: customerData.last_name || "",
-            contact: customerData.club_member_status || "",
-            address: customerData.postal_code || ""
-          });
-          setLoading(false);
-        })
-        .catch(() => {
-          // Fallback to localStorage for demo mode
-          const userData = JSON.parse(loggedInUser);
-          setUser(userData);
-          setFormData({
-            firstName: userData.first_name || "Demo",
-            lastName: userData.last_name || "User",
-            contact: "",
-            address: ""
-          });
-          setLoading(false);
-        });
-    } else {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+
+    if (user) {
+      setFormData({
+        firstName: user.first_name || "",
+        lastName: user.last_name || "",
+        contact: user.phone || "",
+        address: user.postal_code || ""
+      });
       setLoading(false);
     }
-  }, []);
+  }, [user, isAuthenticated, navigate]);
 
   const handleChange = (e) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -57,9 +40,8 @@ export default function Settings() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const userId = localStorage.getItem('userId');
     
-    if (!userId) {
+    if (!user) {
       setMessage({ type: "error", text: "User not found. Please log in again." });
       return;
     }
@@ -68,27 +50,19 @@ export default function Settings() {
       const updateData = {
         first_name: formData.firstName,
         last_name: formData.lastName,
-        club_member_status: formData.contact,
+        phone: formData.contact,
         postal_code: formData.address
       };
 
-      // Try to update via API
-      try {
-        await updateCustomer(userId, updateData);
-        setMessage({ type: "success", text: "Settings updated successfully!" });
-        
-        // Update localStorage
-        const updatedUser = { ...user, ...updateData };
-        localStorage.setItem('loggedInUser', JSON.stringify(updatedUser));
-        setUser(updatedUser);
-      } catch (err) {
-        // For demo mode, just update localStorage
-        const updatedUser = { ...user, ...updateData };
-        localStorage.setItem('loggedInUser', JSON.stringify(updatedUser));
-        setUser(updatedUser);
-        setMessage({ type: "success", text: "Settings updated! (Demo mode - changes saved locally)" });
-      }
+      await customers.update(user.customer_id, updateData);
+      setMessage({ type: "success", text: "Settings updated successfully!" });
+      
+      // Refresh user data
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     } catch (error) {
+      console.error('Failed to update settings:', error);
       setMessage({ type: "error", text: "Failed to update settings. Please try again." });
     }
   };
