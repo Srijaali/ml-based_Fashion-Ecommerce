@@ -146,31 +146,9 @@ export const AppProvider = ({ children }) => {
       }
 
       const response = await wishlist.getByCustomer(customerId);
-      const { access_token } = response.data;
-
-      // Set token in localStorage and axios default headers
-      localStorage.setItem('token', access_token);
-      setTokenState(access_token);
-
-      // Also set it in the api instance to ensure it's used immediately
-      api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
-
-      // Fetch user data
-      const userResponse = await customerAuth.me();
-      setUser(userResponse.data);
-      localStorage.setItem('user', JSON.stringify(userResponse.data));
-
-      return { success: true };
+      setWishlistItems(response.data || []);
     } catch (error) {
-      console.error('Signup failed:', error);
-      // Remove any potentially invalid token
-      localStorage.removeItem('token');
-      delete api.defaults.headers.common['Authorization'];
-
-      return {
-        success: false,
-        error: error.response?.data?.detail || 'Signup failed'
-      };
+      console.error('Failed to load wishlist:', error);
     }
   };
 

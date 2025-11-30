@@ -64,21 +64,29 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // If backend returns 401 Unauthorized
     if (error.response?.status === 401) {
-      // Token expired or invalid - logout
+      console.warn("🚫 Token expired or invalid — clearing auth…");
+
+      // Remove BOTH tokens
       removeToken();
       removeAdminToken();
-      localStorage.removeItem('user');
-      localStorage.removeItem('admin');
 
-      // Only redirect to login if not already there
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+      // Remove stored user/admin data
+      localStorage.removeItem("user");
+      localStorage.removeItem("admin");
+
+      // Only redirect if NOT already on login page
+      const current = window.location.pathname;
+      if (!current.includes("/login") && !current.includes("/admin/login")) {
+        window.location.href = "/login";
       }
     }
+
     return Promise.reject(error);
   }
 );
+
 
 // ============================================
 // AUTHENTICATION - CUSTOMER

@@ -34,7 +34,8 @@ BEGIN
         base.stock,
         base.average_rating,
         base.total_reviews,
-        base.popularity_score
+        base.popularity_score,
+		base.image_path
     FROM base
     WHERE base.price BETWEEN p_price_min AND p_price_max
     ORDER BY

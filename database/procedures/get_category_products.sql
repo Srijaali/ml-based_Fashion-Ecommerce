@@ -1,3 +1,5 @@
+drop function niche_data.get_category_products
+
 CREATE OR REPLACE FUNCTION niche_data.get_category_products(
     p_section_name TEXT,
     p_category_name TEXT,
@@ -10,7 +12,8 @@ RETURNS TABLE (
     stock INT,
     average_rating NUMERIC,
     total_reviews INT,
-    popularity_score BIGINT
+    popularity_score BIGINT,
+	image_path TEXT
 ) AS $$
 BEGIN
     /*
@@ -30,7 +33,8 @@ BEGIN
         base.stock,
         base.average_rating,
         base.total_reviews,
-        base.popularity_score
+        base.popularity_score,
+		base.image_path
     FROM base
     ORDER BY
         CASE WHEN p_sort_option = 'price_low_high' THEN base.price END ASC,
