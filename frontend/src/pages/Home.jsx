@@ -135,7 +135,7 @@ export default function Home() {
         <div
           className="bg-gray-50 rounded-xl p-6 md:p-8 flex flex-col justify-between aspect-[4/3] min-h-[250px]"
           style={{ 
-            backgroundImage: "url('/images/women.png')",
+            backgroundImage: "url('/filtered_images/women.png')",
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat'

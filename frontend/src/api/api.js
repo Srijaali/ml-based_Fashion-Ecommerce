@@ -3,7 +3,7 @@ import axios from 'axios';
 // ============================================
 // BASE API CONFIGURATION
 // ============================================
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+export const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // Create axios instance
 export const api = axios.create({
@@ -24,6 +24,7 @@ export const removeToken = () => localStorage.removeItem('token');
 export const removeAdminToken = () => localStorage.removeItem('adminToken');
 
 // ============================================
+// ============================================
 // AXIOS INTERCEPTORS
 // ============================================
 
@@ -32,26 +33,26 @@ api.interceptors.request.use(
   (config) => {
     const token = getToken();
     const adminToken = getAdminToken();
-    
+
     // Determine which token to use based on the request URL
     let authToken = null;
-    
+
     // If requesting admin endpoints, use admin token
     if (config.url.startsWith('/admins/') || config.url.includes('/admins')) {
       authToken = adminToken;
-    } 
+    }
     // If requesting customer endpoints, use customer token
-    else if (config.url.startsWith('/customers/') || 
-             config.url.startsWith('/cart/') || 
-             config.url.startsWith('/wishlist/') ||
-             config.url.startsWith('/orders/')) {
+    else if (config.url.startsWith('/customers/') ||
+      config.url.startsWith('/cart') ||
+      config.url.startsWith('/wishlist') ||
+      config.url.startsWith('/orders')) {
       authToken = token;
     }
     // For other endpoints, prefer admin token if available
     else {
-      authToken = adminToken || token;
+      authToken = token || adminToken;
     }
-    
+
     if (authToken) {
       config.headers.Authorization = `Bearer ${authToken}`;
     }
@@ -60,7 +61,6 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor - Handle errors globally
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -70,7 +70,7 @@ api.interceptors.response.use(
       removeAdminToken();
       localStorage.removeItem('user');
       localStorage.removeItem('admin');
-      
+
       // Only redirect to login if not already there
       if (!window.location.pathname.includes('/login')) {
         window.location.href = '/login';
@@ -114,15 +114,26 @@ export const adminAuth = {
 // ============================================
 export const sections = {
   getSections: () => api.get('/sections/'),
-  getSectionProducts: (section, limit = 24, offset = 0) => 
+  getSectionProducts: (section, limit = 24, offset = 0) =>
     api.get(`/sections/${section}/products?limit=${limit}&offset=${offset}`),
   getSectionCategories: (section) => api.get(`/sections/${section}/categories`),
-  getCategoryProducts: (section, category, sort = 'popular', limit = 24, offset = 0) => 
-    api.get(`/sections/${section}/${category}/products?sort=${sort}&limit=${limit}&offset=${offset}`),
-  getFilterOptions: (section, category) => 
+  getCategoryProducts: async (section, category, sort, limit, offset) =>
+  axios.get(`${API_URL}/sections/${section}/${category}/products`, {
+    params: {
+      sort,
+      limit,
+      offset
+    }
+  }),
+  getFilterOptions: (section, category) =>
     api.get(`/sections/${section}/${category}/filters`),
-  filterAndSort: (section, category, data) => 
+  filterAndSort: (section, category, data) =>
     api.post(`/sections/${section}/${category}/filter-sort`, data),
+  getSectionProducts: async (section, limit, offset) =>
+  axios.get(`${API_URL}/sections/${section}/products`, {
+    params: { limit, offset }
+  }),
+
 };
 
 // ============================================
@@ -136,7 +147,7 @@ export const articles = {
   create: (data) => api.post('/articles/', data),
   update: (id, data) => api.put(`/articles/${id}`, data),
   delete: (id) => api.delete(`/articles/${id}`),
-  
+
   // Analytics
   getPerformance: (id) => api.get(`/articles/${id}/performance`),
   getDemandTrend: (id) => api.get(`/articles/${id}/demand-trend`),
@@ -167,15 +178,15 @@ export const customers = {
   update: (id, data) => api.put(`/customers/${id}`, data),
   delete: (id) => api.delete(`/customers/${id}`),
   setActive: (id, active) => api.put(`/customers/${id}/active?active=${active}`),
-  
+
   // Analytics
   getFeatures: (id) => api.get(`/customers/${id}/features`),
   getPurchaseFrequency: (id) => api.get(`/customers/${id}/purchase-frequency`),
   getCLV: (id) => api.get(`/customers/${id}/clv`),
   getRFM: (id) => api.get(`/customers/${id}/rfm`),
-  getEvents: (id, skip = 0, limit = 100) => 
+  getEvents: (id, skip = 0, limit = 100) =>
     api.get(`/customers/${id}/events?skip=${skip}&limit=${limit}`),
-  getOrders: (id, skip = 0, limit = 100) => 
+  getOrders: (id, skip = 0, limit = 100) =>
     api.get(`/customers/${id}/orders?skip=${skip}&limit=${limit}`),
 };
 
@@ -221,14 +232,14 @@ export const orders = {
   createWithItems: (data) => api.post('/orders/create-with-items', data),
   getAll: (skip = 0, limit = 100) => api.get(`/orders?skip=${skip}&limit=${limit}`),
   getDetails: (orderId) => api.get(`/orders/${orderId}/details`),
-  getByCustomer: (customerId, skip = 0, limit = 100) => 
+  getByCustomer: (customerId, skip = 0, limit = 100) =>
     api.get(`/orders/customer/${customerId}?skip=${skip}&limit=${limit}`),
   filter: (params) => api.get('/orders/filter', { params }),
-  updateStatus: (orderId, status) => 
+  updateStatus: (orderId, status) =>
     api.put(`/orders/${orderId}/status?payment_status=${status}`),
-  updateAddress: (orderId, address) => 
+  updateAddress: (orderId, address) =>
     api.put(`/orders/${orderId}/address?new_address=${address}`),
-  getDailySales: (skip = 0, limit = 50) => 
+  getDailySales: (skip = 0, limit = 50) =>
     api.get(`/orders/analytics/daily-sales?skip=${skip}&limit=${limit}`),
 };
 
@@ -244,7 +255,7 @@ export const reviews = {
   getById: (id) => api.get(`/reviews/${id}`),
   getByArticle: (articleId) => api.get(`/reviews/article/${articleId}`),
   getByCustomer: (customerId) => api.get(`/reviews/customer/${customerId}`),
-  create: (articleId, reviewText) => 
+  create: (articleId, reviewText) =>
     api.post(`/reviews/create?article_id=${articleId}&review_text=${reviewText}`),
   createAuthenticated: (data) => api.post('/reviews/', data),
   update: (reviewId, data) => api.put(`/reviews/${reviewId}`, data),

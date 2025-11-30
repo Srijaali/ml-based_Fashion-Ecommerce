@@ -29,6 +29,7 @@ class SectionProduct(BaseModel):
     average_rating: Optional[float] = None
     total_reviews: int
     popularity_score: int
+    image_path: Optional[str] = None    
 
 
 class SectionProductsResponse(BaseModel):
@@ -55,6 +56,7 @@ class CategoryProduct(BaseModel):
     average_rating: Optional[float] = None
     total_reviews: int
     popularity_score: int
+    image_path: Optional[str] = None    
 
 
 class CategoryProductsResponse(BaseModel):
@@ -100,6 +102,7 @@ class FilterSortProduct(BaseModel):
     average_rating: Optional[float] = None
     total_reviews: int
     popularity_score: int
+    image_path: Optional[str] = None    
 
 
 class FilterSortResponse(BaseModel):

@@ -15,13 +15,13 @@ export const useApp = () => {
 const generateMockToken = (userId, userType) => {
   // This is a simplified JWT-like structure for development purposes only
   const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const payload = btoa(JSON.stringify({ 
-    sub: userId.toString(), 
+  const payload = btoa(JSON.stringify({
+    sub: userId.toString(),
     type: userType,
     exp: Math.floor(Date.now() / 1000) + 3600 // 1 hour expiry
   }));
   const signature = btoa('mock_signature'); // Mock signature
-  
+
   return `${header}.${payload}.${signature}`;
 };
 
@@ -81,7 +81,7 @@ export const AppProvider = ({ children }) => {
             if (storedUser) {
               setUser(JSON.parse(storedUser));
               api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-              
+
               // Load cart and wishlist if user data exists
               const userData = JSON.parse(storedUser);
               if (userData.customer_id) {
@@ -101,7 +101,7 @@ export const AppProvider = ({ children }) => {
             const response = await customerAuth.me();
             setUser(response.data);
             localStorage.setItem('user', JSON.stringify(response.data));
-            
+
             // Load cart and wishlist
             loadCart(response.data.customer_id);
             loadWishlist(response.data.customer_id);
@@ -111,7 +111,7 @@ export const AppProvider = ({ children }) => {
           }
         }
       }
-      
+
       setLoading(false);
     };
 
@@ -127,7 +127,7 @@ export const AppProvider = ({ children }) => {
         setCartItems([]);
         return;
       }
-      
+
       const response = await cart.get();
       setCartItems(response.data || []);
     } catch (error) {
@@ -144,11 +144,33 @@ export const AppProvider = ({ children }) => {
         setWishlistItems([]);
         return;
       }
-      
+
       const response = await wishlist.getByCustomer(customerId);
-      setWishlistItems(response.data || []);
+      const { access_token } = response.data;
+
+      // Set token in localStorage and axios default headers
+      localStorage.setItem('token', access_token);
+      setTokenState(access_token);
+
+      // Also set it in the api instance to ensure it's used immediately
+      api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+
+      // Fetch user data
+      const userResponse = await customerAuth.me();
+      setUser(userResponse.data);
+      localStorage.setItem('user', JSON.stringify(userResponse.data));
+
+      return { success: true };
     } catch (error) {
-      console.error('Failed to load wishlist:', error);
+      console.error('Signup failed:', error);
+      // Remove any potentially invalid token
+      localStorage.removeItem('token');
+      delete api.defaults.headers.common['Authorization'];
+
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Signup failed'
+      };
     }
   };
 
@@ -157,99 +179,69 @@ export const AppProvider = ({ children }) => {
     try {
       const response = await customerAuth.login({ email, password });
       const { access_token } = response.data;
-      
+
       // Set token in localStorage and axios default headers
       localStorage.setItem('token', access_token);
       setTokenState(access_token);
-      
+
       // Also set it in the api instance to ensure it's used immediately
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
-      
+
       // Fetch user data
       const userResponse = await customerAuth.me();
       setUser(userResponse.data);
       localStorage.setItem('user', JSON.stringify(userResponse.data));
-      
+
       // Load cart and wishlist
       loadCart(userResponse.data.customer_id);
       loadWishlist(userResponse.data.customer_id);
-      
+
       return { success: true };
     } catch (error) {
       console.error('Login failed:', error);
       // Remove any potentially invalid token
       localStorage.removeItem('token');
       delete api.defaults.headers.common['Authorization'];
-      
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || 'Login failed' 
+
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Login failed'
       };
     }
   };
 
-  // Admin login with auto-token generation for development
+  // Admin login
   const loginAdmin = async (usernameOrEmail, password) => {
     try {
-      // Try normal login first
-      const response = await adminAuth.login({ 
-        username_or_email: usernameOrEmail, 
-        password 
+      const response = await adminAuth.login({
+        username_or_email: usernameOrEmail,
+        password
       });
       const { access_token } = response.data;
-      
+
       // Set token in localStorage and axios default headers
       localStorage.setItem('adminToken', access_token);
       setAdminTokenState(access_token);
-      
+
       // Also set it in the api instance to ensure it's used immediately
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
-      
+
       // Fetch admin data
       const adminResponse = await adminAuth.me();
       setAdmin(adminResponse.data);
       localStorage.setItem('admin', JSON.stringify(adminResponse.data));
-      
+
       return { success: true };
     } catch (error) {
       console.error('Admin login failed:', error);
-      
-      // If normal login fails, check if we're in development mode and auto-generate token
-      if (process.env.NODE_ENV === 'development') {
-        // For development, we'll auto-generate a mock token
-        // This is for development/testing purposes only
-        console.log('Generating mock admin token for development');
-        
-        // Generate a mock token
-        const mockToken = generateMockToken(1, 'admin'); // Using admin ID 1 as default
-        
-        // Set the mock token
-        localStorage.setItem('adminToken', mockToken);
-        setAdminTokenState(mockToken);
-        api.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
-        
-        // Set mock admin data directly without calling the API
-        const mockAdmin = {
-          admin_id: 1,
-          username: usernameOrEmail || 'admin',
-          email: `${usernameOrEmail || 'admin'}@example.com`,
-          last_login_at: new Date().toISOString(),
-          is_active: true
-        };
-        
-        setAdmin(mockAdmin);
-        localStorage.setItem('admin', JSON.stringify(mockAdmin));
-        
-        return { success: true };
-      }
-      
+
       // Remove any potentially invalid token
       localStorage.removeItem('adminToken');
       delete api.defaults.headers.common['Authorization'];
-      
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || 'Admin login failed' 
+
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Admin login failed'
       };
     }
   };
@@ -259,29 +251,29 @@ export const AppProvider = ({ children }) => {
     try {
       const response = await customerAuth.signup(data);
       const { access_token } = response.data;
-      
+
       // Set token in localStorage and axios default headers
       localStorage.setItem('token', access_token);
       setTokenState(access_token);
-      
+
       // Also set it in the api instance to ensure it's used immediately
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
-      
+
       // Fetch user data
       const userResponse = await customerAuth.me();
       setUser(userResponse.data);
       localStorage.setItem('user', JSON.stringify(userResponse.data));
-      
+
       return { success: true };
     } catch (error) {
       console.error('Signup failed:', error);
       // Remove any potentially invalid token
       localStorage.removeItem('token');
       delete api.defaults.headers.common['Authorization'];
-      
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || 'Signup failed' 
+
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Signup failed'
       };
     }
   };
@@ -311,25 +303,25 @@ export const AppProvider = ({ children }) => {
     if (!user) {
       return { success: false, error: 'Please login to add items to cart' };
     }
-    
+
     // For mock tokens, just simulate success
     const token = localStorage.getItem('token');
     if (isMockToken(token)) {
       return { success: true };
     }
-    
+
     try {
       // Use the simpler /cart/add endpoint that uses authentication
       await cart.add(articleId, quantity);
-      
+
       // Reload cart
       await loadCart(user.customer_id);
       return { success: true };
     } catch (error) {
       console.error('Failed to add to cart:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || 'Failed to add to cart' 
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Failed to add to cart'
       };
     }
   };
@@ -342,7 +334,7 @@ export const AppProvider = ({ children }) => {
       loadCart(user?.customer_id);
       return { success: true };
     }
-    
+
     try {
       await cart.remove(cartId);
       loadCart(user?.customer_id);
@@ -361,7 +353,7 @@ export const AppProvider = ({ children }) => {
       loadCart(user?.customer_id);
       return { success: true };
     }
-    
+
     try {
       await cart.update(cartId, { quantity });
       loadCart(user?.customer_id);
@@ -375,14 +367,14 @@ export const AppProvider = ({ children }) => {
   // Clear cart
   const clearCart = async () => {
     if (!user) return;
-    
+
     // For mock tokens, just simulate success
     const token = localStorage.getItem('token');
     if (isMockToken(token)) {
       setCartItems([]);
       return { success: true };
     }
-    
+
     try {
       await cart.clear(user.customer_id);
       setCartItems([]);
@@ -398,25 +390,25 @@ export const AppProvider = ({ children }) => {
     if (!user) {
       return { success: false, error: 'Please login to add items to wishlist' };
     }
-    
+
     // For mock tokens, just simulate success
     const token = localStorage.getItem('token');
     if (isMockToken(token)) {
       return { success: true };
     }
-    
+
     try {
       // Use the simpler /wishlist/add endpoint that uses authentication
       await wishlist.add(articleId);
-      
+
       // Reload wishlist
       await loadWishlist(user.customer_id);
       return { success: true };
     } catch (error) {
       console.error('Failed to add to wishlist:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || 'Failed to add to wishlist' 
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Failed to add to wishlist'
       };
     }
   };
@@ -429,7 +421,7 @@ export const AppProvider = ({ children }) => {
       loadWishlist(user?.customer_id);
       return { success: true };
     }
-    
+
     try {
       await wishlist.remove(wishlistId);
       loadWishlist(user?.customer_id);
@@ -449,7 +441,7 @@ export const AppProvider = ({ children }) => {
       loadWishlist(user?.customer_id);
       return { success: true };
     }
-    
+
     try {
       await wishlist.moveToCart(wishlistId);
       loadCart(user?.customer_id);
@@ -470,21 +462,21 @@ export const AppProvider = ({ children }) => {
     loading,
     isAuthenticated: !!user,
     isAdmin: !!admin,
-    
+
     // Auth methods
     login,
     loginAdmin,
     signup,
     logout,
     logoutAdmin,
-    
+
     // Cart methods
     addToCart,
     removeFromCart,
     updateCartItem,
     clearCart,
     loadCart,
-    
+
     // Wishlist methods
     addToWishlist,
     removeFromWishlist,

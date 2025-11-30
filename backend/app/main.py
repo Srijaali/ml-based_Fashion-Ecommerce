@@ -20,19 +20,21 @@ from app.routers import (
     cart,
 )
 from app.customer_auth import router as customer_auth_router
-
-
 app = FastAPI(
     title="LAYR API",
     description="FastAPI backend for e-commerce project",
     version="1.0.0"
 )
 
-# ---- CORS ----
+IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "filtered_images")
+
+app.mount("/images", StaticFiles(directory="filtered_images"), name="images")
+
+from fastapi.middleware.cors import CORSMiddleware
+
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:8000",
     "*"
 ]
 
@@ -42,20 +44,16 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 
-# ---- Static Files ----
-# Serve filtered_images directory at /images endpoint
-filtered_images_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "filtered_images")
-if os.path.exists(filtered_images_path):
-    app.mount("/images", StaticFiles(directory=filtered_images_path), name="images")
 
-# ---- Create tables on startup ----
-@app.on_event("startup")
-def on_startup():
-    Base.metadata.create_all(bind=engine)
-
+# ---- CORS ----
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "*"
+]
 
 # ---- Register Routers ---
 app.include_router(admins.router)  # Router already has /admins prefix defined

@@ -1,4 +1,6 @@
-CReate OR REPLACE FUNCTION niche_data.get_section_products(p_section_name TEXT)
+drop function niche_data.get_section_products
+
+CREATE OR REPLACE FUNCTION niche_data.get_section_products(p_section_name TEXT)
 RETURNS TABLE (
     article_id TEXT,
     prod_name TEXT,
@@ -8,7 +10,8 @@ RETURNS TABLE (
     stock INT,
     average_rating NUMERIC,
     total_reviews INT,
-    popularity_score BIGINT
+    popularity_score BIGINT,
+    image_path TEXT
 ) AS $$
 BEGIN
     RETURN QUERY
@@ -16,31 +19,41 @@ BEGIN
         a.article_id::TEXT,
         a.prod_name::TEXT,
         a.price::NUMERIC,
+
         CASE 
             WHEN a.product_type_name = 'Hoodie' THEN 'hoodie'
             WHEN a.product_type_name = 'Jacket' THEN 'jacket'
             WHEN a.product_type_name = 'Beanie' THEN 'beanie'
             WHEN a.product_type_name = 'Trousers'
-                 AND (a.section_name ILIKE '%Men%' OR a.section_name ILIKE '%Women%' OR a.section_name ILIKE '%Ladies%' OR a.section_name ILIKE '%Boy%' OR a.section_name ILIKE '%Girl%' OR a.section_name ILIKE '%Baby%' OR a.section_name ILIKE '%Kids%')
+                 AND (a.section_name ILIKE '%Men%' 
+                  OR a.section_name ILIKE '%Women%' 
+                  OR a.section_name ILIKE '%Ladies%' 
+                  OR a.section_name ILIKE '%Boy%' 
+                  OR a.section_name ILIKE '%Girl%' 
+                  OR a.section_name ILIKE '%Baby%' 
+                  OR a.section_name ILIKE '%Kids%')
                  THEN 'trouser'
             WHEN a.product_group_name = 'Accessories' THEN 'accessory'
             ELSE 'other'
         END AS category,
+
         p_section_name AS final_section,
+
         a.stock::INT,
 
-        -- Avg Rating
         (SELECT AVG(r.rating)::NUMERIC 
          FROM niche_data.reviews r 
          WHERE r.article_id = a.article_id) AS average_rating,
 
-        -- Total Reviews
-        (SELECT COUNT(*)::INT FROM niche_data.reviews r 
+        (SELECT COUNT(*)::INT 
+         FROM niche_data.reviews r 
          WHERE r.article_id = a.article_id) AS total_reviews,
 
-        -- Popularity
-        (SELECT COUNT(*) FROM niche_data.transactions t
-         WHERE t.article_id = a.article_id) AS popularity_score
+        (SELECT COUNT(*) 
+         FROM niche_data.transactions t
+         WHERE t.article_id = a.article_id) AS popularity_score,
+
+        a.image_path::TEXT
 
     FROM niche_data.articles a
     WHERE 
@@ -64,3 +77,4 @@ BEGIN
         OR (p_section_name = 'unisex' AND a.product_group_name <> 'Accessories');
 END;
 $$ LANGUAGE plpgsql STABLE;
+

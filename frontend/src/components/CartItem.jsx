@@ -1,4 +1,5 @@
 export default function CartItem({ item, onRemove, onUpdateQuantity }) {
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
   const handleQuantityChange = (delta) => {
     const newQuantity = item.quantity + delta;
     if (onUpdateQuantity) {
@@ -9,18 +10,17 @@ export default function CartItem({ item, onRemove, onUpdateQuantity }) {
   // Handle cases where unit_price might not be available
   const unitPrice = item.unit_price || item.price || 0;
   const itemTotal = (unitPrice * item.quantity).toFixed(2);
-
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 hover:shadow-md transition-shadow">
       <div className="flex flex-col sm:flex-row gap-4">
         {/* Product Image */}
         <div className="w-full sm:w-32 md:w-40 aspect-square bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 relative">
           <img
-            src={`/images/${item.image_path || 'placeholder.jpg'}`}
+            src={`${API_URL}/images/${item.image_path || 'placeholder.jpg'}`}
             alt={item.prod_name}
             className="absolute inset-0 w-full h-full object-cover"
             onError={(e) => {
-              e.target.src = '/images/placeholder.jpg';
+              e.target.src = `${API_URL}/images/placeholder.jpg`;
             }}
           />
         </div>
@@ -31,10 +31,10 @@ export default function CartItem({ item, onRemove, onUpdateQuantity }) {
             <h3 className="text-lg font-semibold text-gray-900 mb-2">{item.prod_name}</h3>
             <p className="text-gray-600 mb-1">${unitPrice.toFixed(2)} each</p>
             <p className="text-sm text-gray-500">Item ID: {item.article_id || item.order_item_id}</p>
-          </div>
+          </div >
 
           {/* Quantity Controls */}
-          <div className="flex items-center gap-4 sm:flex-col sm:items-end">
+          < div className="flex items-center gap-4 sm:flex-col sm:items-end" >
             <div className="flex items-center border border-gray-300 rounded-lg">
               <button
                 onClick={() => handleQuantityChange(-1)}
@@ -64,9 +64,9 @@ export default function CartItem({ item, onRemove, onUpdateQuantity }) {
                 Remove
               </button>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
+          </div >
+        </div >
+      </div >
+    </div >
   );
 }

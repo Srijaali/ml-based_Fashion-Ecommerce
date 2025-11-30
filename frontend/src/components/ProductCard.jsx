@@ -1,7 +1,10 @@
+// components/ProductCard.jsx
+
 import { Link, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import SettingsIcon from "./SettingsIcon";
 import { useState } from "react";
+import { API_URL } from "../api/api";
 
 export default function ProductCard({ product, isAdmin }) {
   const navigate = useNavigate();
@@ -9,136 +12,109 @@ export default function ProductCard({ product, isAdmin }) {
   const [isAddingToCart, setIsAddingToCart] = useState(false);
   const [isAddingToWishlist, setIsAddingToWishlist] = useState(false);
 
-  // Handle demo products that might not have all fields
-  const productId = product.article_id || product.id || product.productId || '108775015';
-  const productName = product.prod_name || product.name || 'Product Name';
-  const productPrice = product.price || product.Price || 0;
-  const productImage = product.image_path || product.Image || 'placeholder.jpg';
+  const productId =
+    product.article_id ||
+    product.id ||
+    product.productId ||
+    "108775015";
 
+  const productName =
+    product.prod_name ||
+    product.name ||
+    "Product Name";
 
+  const imagePath =
+    product.image_path
+      ? `${API_URL}/images/${product.image_path}`
+      : `${API_URL}/images/placeholder.jpg`;
 
   return (
-    <div className="group">
-      <Link to={`/products/${productId}`} className="block">
-        <div className="bg-white border border-gray-100 rounded-xl p-4 transition-all duration-300 group-hover:shadow-lg">
+    <div className="product-card border p-4 rounded-lg shadow-md bg-white">
+      <Link to={`/products/${productId}`} className="block relative">
 
-          {/* Image box */}
-          <div className="w-full aspect-[4/3] bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center relative">
-            <img
-              src={`/images/${productImage}`}
-              alt={productName}
-              className="absolute inset-0 w-full h-full object-contain transition-transform duration-300 group-hover:scale-110"
-              onError={(e) => {
-                console.log("Failed to load image:", `/images/${productImage}`);
-                e.target.src = "/images/placeholder.jpg";
-              }}
-            />
-          </div>
+        {isAdmin && (
+          <button className="absolute top-2 right-2 z-20 bg-white p-2 rounded-full shadow">
+            <SettingsIcon />
+          </button>
+        )}
 
-          {/* Product text */}
-          <div className="mt-4 text-center">
-            <h4 className="text-sm font-medium text-gray-800">
-              {productName}
-            </h4>
+        {/* Product Image */}
+        <div className="w-full h-64 overflow-hidden rounded-lg bg-gray-100">
+          <img
+            src={imagePath}
+            alt={productName}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              e.target.src = `${API_URL}/images/placeholder.jpg`;
+            }}
+          />
+        </div>
 
-            <p className="text-gray-500 text-sm mt-1">
-              ${productPrice.toFixed(2)}
-            </p>
-          </div>
-
-          {isAdmin && (
-            <button className="settings-btn">
-              <SettingsIcon />
-            </button>
-          )}
+        {/* Product Name + Price */}
+        <div className="mt-2">
+          <h2 className="text-lg font-semibold">{productName}</h2>
+          <p className="text-gray-700">Rs {product.price}</p>
         </div>
       </Link>
-      
+
       {/* Action Buttons */}
-      <div className="mt-2 flex gap-2">
+      <div className="mt-3 flex gap-2">
+
         {/* Add to Cart */}
-        <button 
+        <button
           onClick={async (e) => {
-            e.stopPropagation();
             e.preventDefault();
-            
             if (!isAuthenticated) {
-              alert('Please login to add items to cart');
-              navigate('/login');
+              navigate("/login");
               return;
             }
-            
             setIsAddingToCart(true);
             const result = await addToCart(productId, 1);
             setIsAddingToCart(false);
-            
-            if (result.success) {
-              alert('Added to cart!');
-            } else {
-              alert(result.error || 'Failed to add to cart');
-            }
+            alert(result.success ? "Added to cart!" : result.error);
           }}
           disabled={isAddingToCart}
-          className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-blue-600 text-white py-2 rounded-lg"
         >
-          {isAddingToCart ? 'Adding...' : 'Add to Cart'}
+          {isAddingToCart ? "Adding..." : "Add to Cart"}
         </button>
-        
+
         {/* Add to Wishlist */}
-        <button 
+        <button
           onClick={async (e) => {
-            e.stopPropagation();
             e.preventDefault();
-            
             if (!isAuthenticated) {
-              alert('Please login to add items to wishlist');
-              navigate('/login');
+              navigate("/login");
               return;
             }
-            
             setIsAddingToWishlist(true);
             const result = await addToWishlist(productId);
             setIsAddingToWishlist(false);
-            
-            if (result.success) {
-              alert('Added to wishlist!');
-            } else {
-              alert(result.error || 'Failed to add to wishlist');
-            }
+            alert(result.success ? "Added to wishlist!" : result.error);
           }}
           disabled={isAddingToWishlist}
-          className="px-3 bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Add to Wishlist"
+          className="px-3 bg-gray-200 text-gray-700 py-2 rounded-lg"
         >
-          {isAddingToWishlist ? '...' : '♡'}
+          {isAddingToWishlist ? "…" : "♡"}
         </button>
-        
+
         {/* Buy Now */}
-        <button 
+        <button
           onClick={async (e) => {
-            e.stopPropagation();
             e.preventDefault();
-            
             if (!isAuthenticated) {
-              alert('Please login to purchase');
-              navigate('/login');
+              navigate("/login");
               return;
             }
-            
             setIsAddingToCart(true);
             const result = await addToCart(productId, 1);
             setIsAddingToCart(false);
-            
-            if (result.success) {
-              navigate('/cart');
-            } else {
-              alert(result.error || 'Failed to add to cart');
-            }
+            if (result.success) navigate("/cart");
+            else alert(result.error);
           }}
-          disabled={isAddingToCart}
-          className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-green-600 text-white py-2 rounded-lg"
         >
-          {isAddingToCart ? 'Adding...' : 'Buy Now'}
+          Buy Now
         </button>
       </div>
     </div>

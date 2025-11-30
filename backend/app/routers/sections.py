@@ -124,6 +124,7 @@ def get_section_products(
             average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
             total_reviews=row.get("total_reviews", 0),
             popularity_score=row.get("popularity_score", 0),
+            image_path=row.get("image_path")
         )
         for row in window
     ]
@@ -209,6 +210,7 @@ def get_category_products(
             average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
             total_reviews=row.get("total_reviews", 0),
             popularity_score=row.get("popularity_score", 0),
+            image_path=row.get("image_path")
         )
         for row in window
     ]
@@ -320,6 +322,7 @@ def filter_and_sort_products(
             average_rating=float(row["average_rating"]) if row["average_rating"] is not None else None,
             total_reviews=row.get("total_reviews", 0),
             popularity_score=row.get("popularity_score", 0),
+            image_path=row.get("image_path")
         )
         for row in rows
     ]

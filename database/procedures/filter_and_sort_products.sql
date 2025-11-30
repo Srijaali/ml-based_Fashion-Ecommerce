@@ -1,3 +1,5 @@
+drop function niche_data.filter_and_sort_products
+
 CREATE OR REPLACE FUNCTION niche_data.filter_and_sort_products(
     p_section_name TEXT,
     p_category_name TEXT,
@@ -12,7 +14,8 @@ RETURNS TABLE (
     stock INT,
     average_rating NUMERIC,
     total_reviews INT,
-    popularity_score BIGINT
+    popularity_score BIGINT,
+	image_path TEXT
 ) AS $$
 BEGIN
     RETURN QUERY
