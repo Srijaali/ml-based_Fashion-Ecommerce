@@ -4,6 +4,7 @@ import { articles, reviews as reviewsAPI } from "../api/api";
 import { useApp } from "../context/AppContext";
 import ReviewItem from "../components/ReviewItem";
 import ProductCard from "../components/ProductCard";
+import { getImageUrl } from "../utils/getimageurl";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -146,7 +147,7 @@ export default function ProductDetail() {
         <div className="w-full">
           <div className="w-full aspect-square max-h-[70vh] bg-gray-100 rounded-xl overflow-hidden flex items-center justify-center relative">
             <img
-              src={`${API_URL}/images/${product.image_path || 'placeholder.jpg'}`}
+              src={getImageUrl(product.image_path)}
               alt={product.prod_name}
               className="absolute inset-0 w-full h-full object-contain"
               onError={(e) => {

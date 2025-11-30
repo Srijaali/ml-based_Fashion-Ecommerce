@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { articles } from "../api/api";
+import { getImageUrl } from "../utils/getimageurl";
+
 
 export default function Wishlist() {
   const { user, wishlistItems, removeFromWishlist, moveWishlistToCart, loadWishlist } = useApp();
@@ -79,7 +81,7 @@ export default function Wishlist() {
             <div key={product.wishlist_id} className="relative">
               <div className="bg-white border border-gray-100 rounded-xl p-4">
                 <img
-                  src={`/images/${product.image_path || 'placeholder.jpg'}`}
+                  src={getImageUrl(product.image_path)}
                   alt={product.prod_name}
                   className="w-full h-48 object-contain rounded-lg mb-4"
                   onError={(e) => e.target.src = "/images/placeholder.jpg"}

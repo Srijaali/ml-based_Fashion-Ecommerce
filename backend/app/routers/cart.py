@@ -30,7 +30,7 @@ def get_customer_cart(
     cart_items = db.execute(
         text("""
             SELECT c.cart_id, c.article_id, c.quantity, 
-                   a.prod_name as article_name, a.price, a.stock
+                   a.prod_name as article_name, a.price, a.stock,a.image_path
             FROM niche_data.cart c
             JOIN niche_data.articles a ON c.article_id = a.article_id
             WHERE c.customer_id = :customer_id
@@ -45,7 +45,8 @@ def get_customer_cart(
             "quantity": item[2],
             "article_name": item[3],
             "price": float(item[4]),
-            "stock": item[5]
+            "stock": item[5],
+            "image_path": item[6]
         }
         for item in cart_items
     ]
@@ -101,31 +102,6 @@ def add_to_cart(
     
     db.commit()
     return {"message": "Item added to cart"}
-
-@router.delete("/{cart_id}")
-def remove_from_cart(
-    cart_id: int,
-    current_customer: CustomerResponse = Depends(get_current_customer),
-    db: Session = Depends(get_db)
-):
-    """Remove item from cart (requires authentication)"""
-    
-    # Verify cart belongs to customer
-    cart = db.execute(
-        text("SELECT customer_id FROM cart WHERE cart_id = :cart_id"),
-        {"cart_id": cart_id}
-    ).fetchone()
-    
-    if not cart or cart[0] != current_customer.customer_id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    db.execute(
-        text("DELETE FROM cart WHERE cart_id = :cart_id"),
-        {"cart_id": cart_id}
-    )
-    db.commit()
-    
-    return {"message": "Item removed from cart"}
 
 
 # Admin-only endpoint to get all carts
@@ -263,6 +239,31 @@ def update_cart_item(
 # -------------------------
 # The earlier delete endpoint already has authentication, so this one is kept for compatibility
 # but should use the authenticated one above
+
+@router.delete("/{cart_id}")
+def remove_from_cart(
+    cart_id: int,
+    current_customer: CustomerResponse = Depends(get_current_customer),
+    db: Session = Depends(get_db)
+):
+    """Remove item from cart (requires authentication)"""
+    
+    # Verify cart belongs to customer
+    cart = db.execute(
+        text("SELECT customer_id FROM niche_data.cart WHERE cart_id = :cart_id"),
+        {"cart_id": cart_id}
+    ).fetchone()
+    
+    if not cart or cart[0] != current_customer.customer_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    db.execute(
+        text("DELETE FROM niche_data.cart WHERE cart_id = :cart_id"),
+        {"cart_id": cart_id}
+    )
+    db.commit()
+    
+    return {"message": "Item removed from cart"}
 
 
 # -------------------------

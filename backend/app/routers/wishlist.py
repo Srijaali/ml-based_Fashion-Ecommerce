@@ -27,7 +27,7 @@ def get_customer_wishlist(
     wishlist_items = db.execute(
         text("""
             SELECT w.wishlist_id, w.article_id, 
-                   a.name, a.price, a.stock
+                   a.prod_name as name , a.price, a.stock,a.image_path
             FROM niche_data.wishlist w
             JOIN niche_data.articles a ON w.article_id = a.article_id
             WHERE w.customer_id = :customer_id
@@ -41,7 +41,8 @@ def get_customer_wishlist(
             "article_id": item[1],
             "article_name": item[2],
             "price": float(item[3]),
-            "stock": item[4]
+            "stock": item[4],
+            "image_path": item[5] 
         }
         for item in wishlist_items
     ]

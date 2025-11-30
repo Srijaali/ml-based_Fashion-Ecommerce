@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import CartItem from "../components/CartItem";
 import { useApp } from "../context/AppContext";
+import { getImageUrl } from "../utils/getimageurl";
 
 export default function Cart() {
   const { user, cartItems, removeFromCart, updateCartItem, loadCart } = useApp();
@@ -29,7 +30,7 @@ export default function Cart() {
       handleRemove(cartId);
       return;
     }
-    
+
     const result = await updateCartItem(cartId, newQuantity);
     if (!result.success) {
       alert(result.error || 'Failed to update quantity');
@@ -42,7 +43,7 @@ export default function Cart() {
     const quantity = item.quantity || 0;
     return sum + (price * quantity);
   }, 0);
-  
+
   const tax = subtotal * 0.1; // 10% tax
   const shipping = subtotal > 100 ? 0 : 10; // Free shipping over $100
   const total = subtotal + tax + shipping;
@@ -107,7 +108,7 @@ export default function Cart() {
                   prod_name: item.article_name || item.name,
                   unit_price: item.price,
                   quantity: item.quantity,
-                  image: item.image
+                  image: getImageUrl(item.image_path)
                 }}
                 onRemove={() => handleRemove(item.cart_id)}
                 onUpdateQuantity={(id, qty) => handleUpdateQuantity(item.cart_id, qty)}
@@ -119,7 +120,7 @@ export default function Cart() {
           <div className="md:col-span-1">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 sticky top-4">
               <h2 className="text-xl font-semibold text-gray-900 mb-6">Order Summary</h2>
-              
+
               <div className="space-y-4 mb-6">
                 <div className="flex justify-between text-gray-600">
                   <span>Subtotal</span>
@@ -154,7 +155,7 @@ export default function Cart() {
               >
                 Proceed to Checkout
               </button>
-              
+
               <button
                 onClick={() => navigate('/products')}
                 className="w-full bg-gray-100 text-gray-900 py-3 px-6 rounded-lg font-medium hover:bg-gray-200 transition-colors duration-200"
