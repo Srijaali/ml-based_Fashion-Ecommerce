@@ -1,19 +1,11 @@
-data\
+# Large ML data files - NEVER commit
+*.parquet
+*.npy
+*.npz
+*.pkl
+data/ml/
+
 # Python cache
-__pycache__/
-*.pyc
-
-# Virtual environment
-venv/
-
-# Environment variables
-*.env
-
-# VSCode
-.vscode/
-*.cache 
-
-# Ignore Python cache
 __pycache__/
 *.pyc
 *.pyo
@@ -24,8 +16,13 @@ venv/
 env/
 .venv/
 
-# Environment & secrets
+# Environment variables
 .env
+*.env
+
+# VSCode
+.vscode/
+*.cache 
 
 # Images or large assets
 filtered_images/
