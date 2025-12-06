@@ -46,39 +46,39 @@ print("=" * 60)
 
 print("\n1️⃣  Querying reviews from database...")
 
+
+
 sql_reviews = """
 SELECT 
-    review_id,
-    customer_id,
-    article_id,
-    rating,
-    COALESCE(review_text, 'Good product') as review_text,
-    COALESCE(created_at, CURRENT_DATE) as created_at
-FROM niche_data.reviews
-LIMIT 100000
+    r.review_id,
+    r.customer_id,
+    r.article_id,
+    a.category_id,
+
+    -- new enriched columns
+    r.rating,
+    r.review_text,
+    r.created_at,
+    r.verified_purchase,
+    r.helpful_votes,
+    r.sentiment_label AS synthetic_sentiment_label,
+    r.aspect_terms,
+    r.language,
+    r.review_length,
+    r.review_source,
+
+    EXTRACT(DAY FROM (CURRENT_DATE - r.created_at)) AS review_age_days
+FROM niche_data.reviews r
+LEFT JOIN niche_data.articles a 
+    ON r.article_id = a.article_id;
 """
 
-try:
-    df = pd.read_sql(sql_reviews, engine)
-    print(f"   ✅ Loaded {len(df):,} reviews from database")
-except Exception as e:
-    print(f"   ⚠️  Error querying database: {e}")
-    print("   Creating synthetic reviews data...")
-    
-    df = pd.DataFrame({
-        'review_id': range(1, 10001),
-        'customer_id': range(100000, 110000),
-        'article_id': range(1, 10001),
-        'rating': [4] * 10000,
-        'review_text': ['Good product'] * 10000,
-        'created_at': pd.date_range('2024-01-01', periods=10000)
-    })
+df = pd.read_sql(sql_reviews, engine)
+print("Loaded rows:", len(df))
 
 # ======================================================
 # Clean + Lemmatize
 # ======================================================
-print("\n2️⃣  Cleaning and lemmatizing text...")
-
 lemmatizer = WordNetLemmatizer()
 
 def clean_text(text, do_lemmatize=True):
@@ -97,16 +97,13 @@ def clean_text(text, do_lemmatize=True):
     return text
 
 df["clean_text"] = df["review_text"].apply(lambda x: clean_text(x))
-print("   ✅ Text cleaned and lemmatized")
 
 # ======================================================
-# VADER Sentiment Analysis
+# VADER Sentiment (additional real sentiment)
 # ======================================================
-print("\n3️⃣  Analyzing sentiment with VADER...")
-
 sia = SentimentIntensityAnalyzer()
 df["vader_score"] = df["clean_text"].apply(lambda x: sia.polarity_scores(x)['compound'])
-df["vader_score"] = (df["vader_score"] + 1) / 2.0     # normalize to 0-1
+df["vader_score"] = (df["vader_score"] + 1) / 2.0     # normalize
 
 def vader_label(score):
     if score < 0.4:
@@ -116,53 +113,80 @@ def vader_label(score):
     return "positive"
 
 df["vader_label"] = df["vader_score"].apply(vader_label)
-df["rating"] = pd.to_numeric(df["rating"], errors='coerce').fillna(0)
-
-print(f"   ✅ Sentiment Analysis Complete")
-print(f"   Sentiment distribution:")
-print(df["vader_label"].value_counts())
 
 # ======================================================
-# TF-IDF Vectorizer (NO sentence-transformers needed!)
+# OPTIONAL: Toxicity (commented out intentionally)
 # ======================================================
-print("\n4️⃣  Creating TF-IDF vectors...")
+'''
+try:
+    tox = Detoxify('original')
+    texts = df['review_text'].fillna("").tolist()
+    tox_scores = tox.predict(texts)
+    df['toxicity'] = tox_scores.get('toxicity')
+    df['severe_toxicity'] = tox_scores.get('severe_toxicity')
+except Exception as e:
+    print("Detoxify failed:", e)
+    df['toxicity'] = np.nan
+    df['severe_toxicity'] = np.nan
+'''
 
+# ======================================================
+# Process aspect_terms (JSONB → Python list)
+# ======================================================
+def safe_parse_json(x):
+    if isinstance(x, dict) or isinstance(x, list):
+        return x
+    try:
+        return json.loads(x)
+    except:
+        return []
+
+df["aspect_terms_list"] = df["aspect_terms"].apply(safe_parse_json)
+
+# ======================================================
+# TF-IDF Vectorizer
+# ======================================================
 tfidf_path = os.path.join(out_dir, "reviews_tfidf_vectorizer.pkl")
 tfidf_npz_path = os.path.join(out_dir, "reviews_tfidf.npz")
 
-tfidf = TfidfVectorizer(stop_words="english", max_features=500)
+tfidf = TfidfVectorizer(stop_words="english", max_features=7000)
 tfidf_matrix = tfidf.fit_transform(df["clean_text"].fillna(""))
 
 scipy.sparse.save_npz(tfidf_npz_path, tfidf_matrix)
 with open(tfidf_path, "wb") as f:
     pickle.dump(tfidf, f)
 
-print(f"   ✅ TF-IDF shape: {tfidf_matrix.shape}")
-print(f"   ✅ Saved to: {out_dir}")
+print("TF-IDF shape:", tfidf_matrix.shape)
+print("Saved TF-IDF vectorizer and matrix to:", out_dir)
 
 # ======================================================
-# Save Final Parquet (NO embeddings needed for now)
+# Sentence-BERT Embeddings
 # ======================================================
-print("\n5️⃣  Saving final dataset...")
+emb_path = os.path.join(out_dir, "reviews_bert_embeddings.npy")
 
-# Keep useful columns only
-final_cols = ['review_id', 'customer_id', 'article_id', 'rating', 
-              'review_text', 'clean_text', 'vader_score', 'vader_label', 'created_at']
+try:
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    embeddings = model.encode(
+        df['clean_text'].fillna("").tolist(),
+        batch_size=64,
+        show_progress_bar=True,
+        convert_to_numpy=True
+    )
+    np.save(emb_path, embeddings)
+    print("Saved embeddings to:", emb_path)
+except Exception as e:
+    print("Warning: Failed to compute embeddings:", e)
 
-df_final = df[[col for col in final_cols if col in df.columns]]
-
+# ======================================================
+# Save Final Parquet
+# ======================================================
 parquet_path = os.path.join(out_dir, "reviews.parquet")
-df_final.to_parquet(parquet_path, index=False)
+df.to_parquet(parquet_path, index=False)
 
-print(f"   ✅ reviews.parquet ({len(df_final):,} rows)")
+print("Saved final ML dataset to:", parquet_path)
+print(df.head(5).T)
 
-print("\n" + "=" * 60)
-print("✅ Dataset E Created Successfully!")
-print("=" * 60)
-print(f"\nSummary:")
-print(f"   Reviews loaded: {len(df_final):,}")
-print(f"   Files created:")
-print(f"     - data/ml/reviews.parquet")
-print(f"     - data/ml/reviews_tfidf.npz")
-print(f"     - data/ml/reviews_tfidf_vectorizer.pkl")
+
+
+
 print(f"\n{df_final.head(3)}")
