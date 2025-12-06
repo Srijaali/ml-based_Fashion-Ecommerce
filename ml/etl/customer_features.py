@@ -1,119 +1,68 @@
 import pandas as pd
-import numpy as np
+from datetime import datetime
 from sqlalchemy import create_engine
+from dotenv import load_dotenv
+import os
 
-engine = create_engine("postgresql://postgres:rayyan123@localhost:5432/fashion_db")
+os.makedirs("data/ml", exist_ok=True)
+load_dotenv()
 
-sql_demographics = '''
-SELECT
-    customer_id,
-    age,
-    active,
-    club_member_status,
-    fashion_news_frequency,
-    signup_date,
-    EXTRACT(DAY FROM (CURRENT_DATE - signup_date)) AS signup_age_days
-FROM customers;
-'''
-
-sql_rfm = '''
-WITH tx AS (
-    SELECT
-        customer_id,
-        COUNT(*)                     AS total_transactions,
-        SUM(price)                   AS total_amount_spent,
-        MIN(t_dat)                   AS first_purchase_date,
-        MAX(t_dat)                   AS last_purchase_date
-    FROM niche_data.transactions
-    GROUP BY customer_id
-),
-rec AS (
-    SELECT
-        customer_id,
-        total_transactions,
-        total_amount_spent,
-        first_purchase_date,
-        last_purchase_date,
-        (CURRENT_DATE - last_purchase_date) AS recency_days  -- integer
-    FROM tx
-)
-SELECT * FROM rec;
-'''
-
-sql_orders = '''
-WITH orders_base AS (
-    SELECT
-        o.customer_id,
-        COUNT(*) AS total_orders,
-        SUM(oi.quantity) AS total_items_bought,
-        SUM(o.total_amount) AS total_revenue_from_orders,
-        AVG(o.total_amount) AS avg_order_value
-    FROM niche_data.orders o
-    LEFT JOIN niche_data.order_items oi ON o.order_id = oi.order_id
-    GROUP BY o.customer_id
-)
-SELECT * FROM orders_base;
-'''
-
-sql_events = '''
-SELECT
-    customer_id,
-    COUNT(*) AS total_events,
-    SUM(CASE WHEN event_type = 'view' THEN 1 ELSE 0 END) AS views,
-    SUM(CASE WHEN event_type = 'click' THEN 1 ELSE 0 END) AS clicks,
-    SUM(CASE WHEN event_type = 'cart' THEN 1 ELSE 0 END) AS carts,
-    SUM(CASE WHEN event_type = 'buy' THEN 1 ELSE 0 END) AS buys,
-    SUM(CASE WHEN event_type = 'wishlist' THEN 1 ELSE 0 END) AS wishlist_events
-FROM niche_data.events
-GROUP BY customer_id;
-'''
-
-sql_top_category = '''
-WITH cat_pref AS (
-    SELECT
-        t.customer_id,
-        a.category_id,
-        COUNT(*) AS cnt
-    FROM niche_data.transactions t
-    JOIN niche_data.articles a ON t.article_id = a.article_id
-    GROUP BY t.customer_id, a.category_id
-),
-
-ranked AS (
-    SELECT *,
-        ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY cnt DESC) AS rnk
-    FROM cat_pref
+engine = create_engine(
+    f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@127.0.0.1:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
 )
 
-SELECT
-    customer_id,
-    category_id AS top_category
-FROM ranked
-WHERE rnk = 1;
-'''
+print("=" * 60)
+print("Dataset C: Customer Features (RFM Analysis)")
+print("=" * 60)
 
-demographics = pd.read_sql(sql_demographics, engine)
-rfm = pd.read_sql(sql_rfm, engine)
-orders = pd.read_sql(sql_orders, engine)
-events = pd.read_sql(sql_events, engine)
-top_cat = pd.read_sql(sql_top_category, engine)
+# RFM Analysis
+print("\n1️⃣  Querying customer transactions...")
 
+# ⭐ FIXED: Add niche_data. schema prefix
+query = """
+SELECT 
+    c.customer_id,
+    COALESCE(c.age, 30) as age,
+    COUNT(DISTINCT t.customer_id) as frequency,
+    COALESCE(SUM(t.price), 0) as monetary,
+    COALESCE(MAX(t.t_dat), CURRENT_DATE) as last_purchase_date
+FROM niche_data.customers c
+LEFT JOIN niche_data.transactions t ON c.customer_id = t.customer_id
+GROUP BY c.customer_id, c.age
+LIMIT 500000
+"""
 
-df = (
-    demographics
-    .merge(rfm, on="customer_id", how="left")
-    .merge(orders, on="customer_id", how="left")
-    .merge(events, on="customer_id", how="left")
-    .merge(top_cat, on="customer_id", how="left")
-)
+df = pd.read_sql(query, engine)
+print(f"   Loaded {len(df)} customers")
 
+# Calculate Recency
+print("\n2️⃣  Calculating RFM scores...")
+today = datetime.now()
+df['last_purchase_date'] = pd.to_datetime(df['last_purchase_date'])
+df['recency'] = (today - df['last_purchase_date']).dt.days
+df['recency'] = df['recency'].fillna(999)
 
-df['R_score'] = pd.qcut(df['recency_days'], q=5, labels=False, duplicates='drop')
-df['F_score'] = pd.qcut(df['total_transactions'], q=5, labels=False, duplicates='drop')
-df['M_score'] = pd.qcut(df['total_amount_spent'], q=5, labels=False, duplicates='drop')
+# Scoring (1-5)
+df['R_score'] = pd.qcut(df['recency'], q=5, labels=[5, 4, 3, 2, 1], duplicates='drop')
+df['F_score'] = pd.qcut(df['frequency'].rank(method='first'), q=5, labels=[1, 2, 3, 4, 5], duplicates='drop')
+df['M_score'] = pd.qcut(df['monetary'].rank(method='first'), q=5, labels=[1, 2, 3, 4, 5], duplicates='drop')
 
-df['RFM_score'] = df['R_score'] + df['F_score'] + df['M_score']
+# Convert to numeric
+df['R_score'] = pd.to_numeric(df['R_score'])
+df['F_score'] = pd.to_numeric(df['F_score'])
+df['M_score'] = pd.to_numeric(df['M_score'])
 
+df['rfm_score'] = df['R_score'] + df['F_score'] + df['M_score']
 
-df.to_parquet("data/ml/customer_features.parquet", index=False)
-#df.to_csv("data/ml/customer_features.csv", index=False)
+print(f"   RFM Score Range: {df['rfm_score'].min():.0f} - {df['rfm_score'].max():.0f}")
+
+# Save
+print("\n3️⃣  Saving file...")
+df.to_parquet('data/ml/customer_features.parquet', index=False)
+print("   ✅ customer_features.parquet")
+
+print("\n" + "=" * 60)
+print("✅ Dataset C Created Successfully!")
+print("=" * 60)
+print(f"   Shape: {df.shape}")
+print(f"   Location: data/ml/customer_features.parquet")

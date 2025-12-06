@@ -1,11 +1,20 @@
-import os
 import pandas as pd
 import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+import pickle
 from sqlalchemy import create_engine
+from dotenv import load_dotenv
+import os
+import scipy.sparse
 
-# ---- DB connection ----
-engine = create_engine("postgresql://postgres:rayyan123@localhost:5432/fashion_db")
+# Create directories
+os.makedirs("data/ml", exist_ok=True)
 
+load_dotenv()
+
+engine = create_engine(
+    f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@127.0.0.1:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+)
 # ---- SQL queries ----
 sql_article_daily = '''
 SELECT

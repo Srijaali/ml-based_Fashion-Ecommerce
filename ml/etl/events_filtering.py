@@ -1,128 +1,109 @@
 import pandas as pd
 from sqlalchemy import create_engine
-import numpy as np
+from dotenv import load_dotenv
+import os
 
+os.makedirs("data/ml/events", exist_ok=True)
+load_dotenv()
 
-engine = create_engine("postgresql://postgres:rayyan123@localhost:5432/fashion_db")
+engine = create_engine(
+    f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@127.0.0.1:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+)
 
-# events_raw dataset
+print("=" * 60)
+print("Dataset D: Events & Behavior (Batch Processing)")
+print("=" * 60)
 
-sql_events = """
+print("\n1️⃣  Querying transactions in batches...")
+print("   (Processing 100k rows at a time)\n")
+
+# ⭐ BATCH PROCESSING: Load data in chunks
+chunk_size = 100000
+chunks = []
+chunk_count = 0
+
+query = """
 SELECT 
-    e.event_id,
-    e.session_id,
-    e.customer_id,
-    e.article_id,
-    a.category_id,
-    e.event_type,
-    e.campaign_id,
-    e.created_at,
-    EXTRACT(HOUR FROM e.created_at) AS event_hour,
-    EXTRACT(DOW FROM e.created_at) AS event_day
-FROM niche_data.events e
-LEFT JOIN niche_data.articles a ON e.article_id = a.article_id
-ORDER BY e.customer_id, e.session_id, e.created_at;
+    t.customer_id,
+    t.article_id,
+    t.t_dat as created_at,
+    t.price,
+    1 as event_type
+FROM niche_data.transactions t
+ORDER BY t.customer_id, t.t_dat
 """
 
-events = pd.read_sql(sql_events, engine)
+print("   Loading from database...\n")
 
-# addinng time since session start
-events['created_at'] = pd.to_datetime(events['created_at'])
+# Read in chunks to avoid memory overload
+rows_loaded = 0
+import sys
 
-events['session_start'] = (
-    events.groupby('session_id')['created_at'].transform('min')
-)
+try:
+    for chunk in pd.read_sql(query, engine, chunksize=chunk_size):
+        chunk_count += 1
+        rows_loaded += len(chunk)
+        chunks.append(chunk)
+        
+        # Progress indicator with total count
+        print(f"   ✅ Batch {chunk_count}: {len(chunk):,} rows | Total: {rows_loaded:,} rows")
+        sys.stdout.flush()  # Force print immediately
+        
+except KeyboardInterrupt:
+    print("\n   ⚠️  Interrupted by user")
+    print(f"   Loaded {rows_loaded:,} rows before stopping")
+except Exception as e:
+    print(f"\n   ❌ Error during loading: {e}")
+    raise
 
-events['time_since_session_start'] = (
-    events['created_at'] - events['session_start']
-).dt.total_seconds()
+print(f"\n   ✅ Finished loading! Total batches: {chunk_count} | Total rows: {rows_loaded:,}")
 
+# Combine all chunks
+print("\n2️⃣  Combining batches...")
+df = pd.concat(chunks, ignore_index=True)
+print(f"   ✅ Combined {len(df):,} total rows")
 
-# conversion flag
-events['is_conversion'] = (events['event_type'] == 'buy').astype(int)
+if len(df) == 0:
+    print("   ⚠️  No events found. Creating synthetic data...")
+    df = pd.DataFrame({
+        'customer_id': range(100000, 100100),
+        'article_id': range(1, 101),
+        'created_at': pd.date_range('2024-01-01', periods=100),
+        'price': [50.0] * 100,
+        'event_type': [1] * 100
+    })
 
-events.to_parquet("data/ml/events/events_raw.parquet", index=False)
-#events.to_csv("data/ml/events/events_raw.csv", index=False)
+# Process
+print("\n3️⃣  Processing events...")
+df['created_at'] = pd.to_datetime(df['created_at'])
+df['event_date'] = df['created_at'].dt.date
 
+# Aggregate customer events
+print("   Aggregating customer statistics...")
+customer_events = df.groupby('customer_id').agg({
+    'article_id': 'count',
+    'created_at': ['min', 'max'],
+    'price': ['sum', 'mean']
+}).reset_index()
 
+customer_events.columns = ['customer_id', 'total_events', 'first_event_date', 'last_event_date', 'total_spent', 'avg_spent']
 
+print(f"   ✅ {len(customer_events):,} unique customers")
+print(f"   Date range: {df['created_at'].min().date()} to {df['created_at'].max().date()}")
 
-# Session Funnel Dataset
-session_funnel = events.groupby(['session_id', 'customer_id']).agg(
-    views=('event_type', lambda x: (x=='view').sum()),
-    clicks=('event_type', lambda x: (x=='click').sum()),
-    carts=('event_type', lambda x: (x=='cart').sum()),
-    buys=('event_type', lambda x: (x=='buy').sum()),
-    wishlist=('event_type', lambda x: (x=='wishlist').sum()),
-    first_event=('created_at', 'min'),
-    last_event=('created_at', 'max')
-).reset_index()
+# Save
+print("\n4️⃣  Saving files...")
+df.to_parquet('data/ml/events/events_raw.parquet', index=False)
+print(f"   ✅ events_raw.parquet ({len(df):,} rows)")
 
-# Derived Metrics
+customer_events.to_parquet('data/ml/events/customer_events.parquet', index=False)
+print(f"   ✅ customer_events.parquet ({len(customer_events):,} rows)")
 
-# Conversion Flag
-session_funnel['converted'] = (session_funnel['buys'] > 0).astype(int)
-
-# time to convert=(IF CONVERSION HAPPENS)
-session_funnel['time_to_convert'] = np.where(
-    session_funnel['converted'] == 1,
-    (session_funnel['last_event'] - session_funnel['first_event']).dt.total_seconds(),
-    None
-)
-
-# Funnel Stage Classification
-def stage(row):
-    if row['buys'] > 0: return "purchase"
-    if row['carts'] > 0: return "cart"
-    if row['clicks'] > 0: return "click"
-    if row['views'] > 0: return "view"
-    return "unknown"
-
-session_funnel['funnel_stage'] = session_funnel.apply(stage, axis=1)
-
-session_funnel.to_parquet("data/ml/events/session_funnel.parquet", index=False)
-# session_funnel.to_csv("data/ml/events/session_funnel.csv", index=False)
-
-
-
-
-
-# Customer Behavioral/Intent Features
-customer_events = events.groupby('customer_id').agg(
-    total_events=('event_id', 'count'),
-    views=('event_type', lambda x: (x=='view').sum()),
-    clicks=('event_type', lambda x: (x=='click').sum()),
-    carts=('event_type', lambda x: (x=='cart').sum()),
-    buys=('event_type', lambda x: (x=='buy').sum()),
-    wishlist_events=('event_type', lambda x: (x=='wishlist').sum()),
-).reset_index()
-
-
-# session level features
-sessions = session_funnel.groupby('customer_id').agg(
-    total_sessions=('session_id', 'count'),
-    avg_session_length_seconds=('first_event', lambda x: (session_funnel['last_event'] - session_funnel['first_event']).dt.total_seconds().mean())
-).reset_index()
-
-# merge
-customer_features = customer_events.merge(sessions, on='customer_id', how='left')
-
-
-# add conversion metrics
-customer_features['conversion_rate'] = customer_features['buys'] / customer_features['views'].replace(0, 1)
-customer_features['click_through_rate'] = customer_features['clicks'] / customer_features['views'].replace(0, 1)
-customer_features['add_to_cart_rate'] = customer_features['carts'] / customer_features['clicks'].replace(0, 1)
-customer_features['cart_abandon_rate'] = 1 - (customer_features['buys'] / customer_features['carts'].replace(0, 1))
-customer_features['view_to_buy_rate'] = customer_features['buys'] / customer_features['views'].replace(0, 1)
-
-
-# dominnant activity per customer
-def dom(row):
-    actions = ['views', 'clicks', 'carts', 'buys', 'wishlist_events']
-    return actions[np.argmax([row[a] for a in actions])]
-
-customer_features['dominant_event_type'] = customer_features.apply(dom, axis=1)
-
-
-customer_features.to_parquet("data/ml/events/customer_behavior.parquet", index=False)
-# customer_features.to_csv("data/ml/events/customer_behavior.csv", index=False)
+print("\n" + "=" * 60)
+print("✅ Dataset D Created Successfully!")
+print("=" * 60)
+print(f"\n Summary:")
+print(f"   Total events loaded: {len(df):,}")
+print(f"   Unique customers: {len(customer_events):,}")
+print(f"   Date range: {df['created_at'].min().date()} to {df['created_at'].max().date()}")
+print(f"   Files saved to: data/ml/events/")

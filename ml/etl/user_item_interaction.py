@@ -1,8 +1,12 @@
 import pandas as pd
 from sqlalchemy import create_engine
-
-engine = create_engine("postgresql://postgres:rayyan123@localhost:5432/fashion_db")
-
+from dotenv import load_dotenv
+import os
+os.makedirs("data/ml", exist_ok=True)
+load_dotenv()
+engine = create_engine(
+    f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@127.0.0.1:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+)
 query = """
 WITH base AS (
     SELECT 
