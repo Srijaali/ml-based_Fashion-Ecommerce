@@ -7,7 +7,7 @@ from sqlalchemy import func
 import pandas as pd
 from typing import Dict, Any
 
-router = APIRouter(prefix="/segmentation", tags=["Customer Segmentation"])
+router = APIRouter()
 
 # Project-root aware path to segmentation artifacts
 HERE = os.path.abspath(os.path.dirname(__file__))            # backend/app/routers
