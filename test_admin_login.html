@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Login Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <h1>Admin Login Test</h1>
+    <button onclick="testLogin()">Test Admin Login</button>
+    <div id="result"></div>
+
+    <script>
+        async function testLogin() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                // Generate a mock JWT token
+                const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+                const payload = btoa(JSON.stringify({ 
+                    sub: '1', 
+                    type: 'admin',
+                    exp: Math.floor(Date.now() / 1000) + 3600
+                }));
+                const signature = btoa('mock_signature');
+                const mockToken = `${header}.${payload}.${signature}`;
+                
+                // Set the token in localStorage
+                localStorage.setItem('adminToken', mockToken);
+                
+                // Try to make a request to the admin endpoint
+                const response = await axios.get('http://localhost:8000/admins/me', {
+                    headers: {
+                        'Authorization': `Bearer ${mockToken}`
+                    }
+                });
+                
+                resultDiv.innerHTML = '<p style="color: green;">Login successful! Admin data: ' + JSON.stringify(response.data) + '</p>';
+            } catch (error) {
+                resultDiv.innerHTML = '<p style="color: red;">Login failed: ' + error.message + '</p>';
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>

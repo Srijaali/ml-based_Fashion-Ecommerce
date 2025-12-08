@@ -1,0 +1,55 @@
+# Large ML data files - NEVER commit
+*.parquet
+*.npy
+*.npz
+*.pkl
+data/ml/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+*.env
+
+# VSCode
+.vscode/
+*.cache 
+
+# Images or large assets
+filtered_images/
+*.jpg
+*.jpeg
+*.png
+
+# Node modules (if any inside backend)
+node_modules/
+
+# VSCode stuff
+.vscode/
+
+# macOS / Windows system files
+.DS_Store
+Thumbs.db
+
+# PyCharm
+.idea/
+
+# Compiled files
+*.so
+*.dll
+*.dylib
+
+# Logs
+*.log
+
+# Cache
+.cache/
