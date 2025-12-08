@@ -22,6 +22,7 @@ python ml/recommenders/cf_train_simple.py
 ## Hyperparameter Tuning Cheat Sheet
 
 ### Start Here
+
 ```python
 # cf_train_experiment.py
 
@@ -33,6 +34,7 @@ DATA_SAMPLE_PERCENT = 10       # ← Fast iteration (keep at 10)
 ```
 
 ### Experiment 1: Quality vs Speed
+
 ```python
 # Try N_COMPONENTS (bigger = better quality, slower)
 N_COMPONENTS = 20   # Fast (8s)   → 35% variance
@@ -43,6 +45,7 @@ N_COMPONENTS = 100  # Overkill (18s) → 38% variance
 ```
 
 ### Experiment 2: Convergence
+
 ```python
 # Try SVD_ITERATIONS (more = better quality, slower)
 SVD_ITERATIONS = 20   # Fast (7s)   → 36.5% variance
@@ -52,6 +55,7 @@ SVD_ITERATIONS = 100  # Better (13s) → 37.1% variance
 ```
 
 ### Experiment 3: Diversity
+
 ```python
 # Try N_SIMILAR_USERS (more = more diverse recommendations)
 N_SIMILAR_USERS = 10  # Conservative (3s)
@@ -82,10 +86,10 @@ python ml/recommenders/cf_train_experiment.py
 
 ## Performance Expectations
 
-| Data | Time | Quality |
-|------|------|---------|
-| 10% (experiment) | ~16s | Fast feedback |
-| 100% (production) | ~9min | Full quality |
+| Data              | Time  | Quality       |
+| ----------------- | ----- | ------------- |
+| 10% (experiment)  | ~16s  | Fast feedback |
+| 100% (production) | ~9min | Full quality  |
 
 ---
 
@@ -110,10 +114,12 @@ Use cf_train_simple.py when:
 ## Files Generated
 
 ### cf_train_experiment.py produces:
+
 - None (just metrics on screen)
 - Use for decision-making only
 
 ### cf_train_simple.py produces:
+
 - `user_item_matrix.npz` - Sparse interaction matrix
 - `user_latent_factors.npy` - User embeddings (500k × 50)
 - `item_latent_factors.npy` - Item embeddings (7.4k × 50)
@@ -139,6 +145,7 @@ Scripts use CPU (sufficient for this dataset). GPU would save 5-10 min in produc
 ## Troubleshooting
 
 **Q: Getting OOM errors?**
+
 ```python
 N_COMPONENTS = 30  # Reduce
 N_USERS_FOR_RECS = 50  # Or reduce user sample
@@ -146,12 +153,14 @@ DATA_SAMPLE_PERCENT = 5  # Use less data
 ```
 
 **Q: Variance too low?**
+
 ```python
 N_COMPONENTS = 75  # Increase
 SVD_ITERATIONS = 100  # Or more iterations
 ```
 
 **Q: Too slow for iteration?**
+
 ```python
 DATA_SAMPLE_PERCENT = 5  # Use 5% instead of 10%
 N_USERS_FOR_RECS = 50  # Reduce sample users

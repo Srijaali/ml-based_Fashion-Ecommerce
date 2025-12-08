@@ -6,32 +6,37 @@ You now have a **streamlined, production-ready** collaborative filtering trainin
 
 ### 📊 Files Status
 
-| File | Purpose | Time | Keep? |
-|------|---------|------|-------|
-| `cf_train_experiment.py` | Fast local iteration (10% data) | 17 sec | ✅ YES |
-| `cf_train_simple.py` | Full local training (fallback) | 27 min | ✅ YES |
-| `cf_train_kaggle.py` | **Kaggle GPU training (400k users)** | **15-20 min** | ✅ YES (NEW) |
-| `cf_evaluate.py` | Model quality assessment | 2-3 min | ✅ YES |
-| `cf_train.py` | ~~Original simple version~~ | ~~30 min~~ | ❌ DELETED |
-| `test_cf_rapid.py` | Rapid testing framework | 35 sec | ✅ YES (NEW) |
+| File                     | Purpose                              | Time          | Keep?        |
+| ------------------------ | ------------------------------------ | ------------- | ------------ |
+| `cf_train_experiment.py` | Fast local iteration (10% data)      | 17 sec        | ✅ YES       |
+| `cf_train_simple.py`     | Full local training (fallback)       | 27 min        | ✅ YES       |
+| `cf_train_kaggle.py`     | **Kaggle GPU training (400k users)** | **15-20 min** | ✅ YES (NEW) |
+| `cf_evaluate.py`         | Model quality assessment             | 2-3 min       | ✅ YES       |
+| `cf_train.py`            | ~~Original simple version~~          | ~~30 min~~    | ❌ DELETED   |
+| `test_cf_rapid.py`       | Rapid testing framework              | 35 sec        | ✅ YES (NEW) |
 
 ---
 
 ## 🚀 Quick Start (Choose Your Path)
 
 ### Path 1: Quick Local Test (17 seconds)
+
 ```bash
 python ml/recommenders/cf_train_experiment.py
 ```
+
 **Use this:** To get instant feedback during development
 
 ---
 
 ### Path 2: Rapid Hyperparameter Tuning (35 seconds per iteration)
+
 ```bash
 python test_cf_rapid.py --components=50 --iterations=50
 ```
+
 **Use this:** To find optimal settings before GPU training
+
 - Runs experiment (17 sec) + evaluation (15 sec)
 - Shows all metrics + recommendations
 - Loop until satisfied, then go to Kaggle
@@ -39,6 +44,7 @@ python test_cf_rapid.py --components=50 --iterations=50
 ---
 
 ### Path 3: Kaggle GPU Training - PRODUCTION (15-20 minutes)
+
 ```
 1. Go to kaggle.com → Create new Notebook
 2. Copy entire cf_train_kaggle.py script
@@ -47,7 +53,9 @@ python test_cf_rapid.py --components=50 --iterations=50
 5. Download 6 parquet files
 6. Copy to data/recommendations/
 ```
+
 **Use this:** For production model on 400k users
+
 - **Cost:** FREE (Kaggle provides free GPU)
 - **Expected time:** 15-20 minutes
 - **Expected quality:** 85+ / 100 (vs 54.5 locally)
@@ -56,13 +64,13 @@ python test_cf_rapid.py --components=50 --iterations=50
 
 ## 📈 Performance Expectations
 
-| Metric | Local 10% | Local 5k | Kaggle 400k |
-|--------|----------|---------|-----------|
-| Training Time | 17 sec | 27 min | 15-20 min |
-| Quality Score | 54.5 | 54.5 | **85+** |
-| Coverage | 0.5% | 0.9% | **95%+** |
-| Variance | 37% | 37% | **60%+** |
-| Users | 55k | 5k | **400k** |
+| Metric        | Local 10% | Local 5k | Kaggle 400k |
+| ------------- | --------- | -------- | ----------- |
+| Training Time | 17 sec    | 27 min   | 15-20 min   |
+| Quality Score | 54.5      | 54.5     | **85+**     |
+| Coverage      | 0.5%      | 0.9%     | **95%+**    |
+| Variance      | 37%       | 37%      | **60%+**    |
+| Users         | 55k       | 5k       | **400k**    |
 
 ---
 
@@ -119,21 +127,26 @@ root/
 ## ✅ Next Steps
 
 1. **Optional - Test locally:**
+
    ```bash
    python test_cf_rapid.py
    ```
+
    Expected: Score ~54.5 (baseline)
 
 2. **Ready to scale:** Copy `cf_train_kaggle.py` to Kaggle
+
    - Paste into new Notebook
    - Select GPU
    - Run (15-20 min)
    - Download 6 files
 
 3. **Evaluate results:**
+
    ```bash
    python ml/recommenders/cf_evaluate.py
    ```
+
    Expected: Score 85+ (with Kaggle training)
 
 4. **Deploy to FastAPI** once satisfied with quality
@@ -142,11 +155,11 @@ root/
 
 ## 📊 Files Created in This Session
 
-| File | Purpose | Size |
-|------|---------|------|
-| `cf_train_kaggle.py` | Kaggle GPU production script | 17 KB |
-| `test_cf_rapid.py` | Rapid testing framework | 12 KB |
-| `COMPARE_AND_TEST.py` | Analysis & comparison | 15 KB |
+| File                     | Purpose                      | Size  |
+| ------------------------ | ---------------------------- | ----- |
+| `cf_train_kaggle.py`     | Kaggle GPU production script | 17 KB |
+| `test_cf_rapid.py`       | Rapid testing framework      | 12 KB |
+| `COMPARE_AND_TEST.py`    | Analysis & comparison        | 15 KB |
 | `CONSOLIDATION_GUIDE.md` | Detailed consolidation guide | 20 KB |
 
 All tested and ready to use! 🎉
@@ -165,6 +178,7 @@ All tested and ready to use! 🎉
 ## Questions?
 
 All scripts include:
+
 - ✅ Comprehensive inline documentation
 - ✅ Detailed logging for debugging
 - ✅ Error handling & fallbacks

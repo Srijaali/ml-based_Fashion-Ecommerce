@@ -17,10 +17,10 @@
 
 ## 🎯 Training Scripts
 
-| Script | Purpose | Data | Time | Use Case |
-|--------|---------|------|------|----------|
-| `cf_train_experiment.py` | **Rapid Iteration** | 10% | 16s | Hyperparameter tuning |
-| `cf_train_simple.py` | **Production** | 100% | 9m | Final recommendations |
+| Script                   | Purpose             | Data | Time | Use Case              |
+| ------------------------ | ------------------- | ---- | ---- | --------------------- |
+| `cf_train_experiment.py` | **Rapid Iteration** | 10%  | 16s  | Hyperparameter tuning |
+| `cf_train_simple.py`     | **Production**      | 100% | 9m   | Final recommendations |
 
 ---
 
@@ -69,23 +69,27 @@ python ml/recommenders/cf_train_simple.py
 ## 📊 What Changed in Your Files
 
 ### cf_train_simple.py
+
 ✅ **Fixed:** Removed GPU-specific imports (cuml not available)
 ✅ **Simplified:** Now uses CPU-only scikit-learn (fast enough)
 ✅ **Syntax:** Validated and ready to run
 
 ### cf_train_experiment.py (NEW)
+
 ✅ **Created:** Fast experimentation script
 ✅ **Features:**
-  - Uses 10% data for speed (16 seconds)
-  - Easy hyperparameter modification
-  - Clear output metrics
-  - Guidance on next steps
+
+- Uses 10% data for speed (16 seconds)
+- Easy hyperparameter modification
+- Clear output metrics
+- Guidance on next steps
 
 ---
 
 ## 📈 Performance Data
 
 ### Experiment Run (10% data, 50 components)
+
 ```
 ⏱️  Total Time: 16.5 seconds
 📊 Variance Explained: 37.07%
@@ -95,6 +99,7 @@ python ml/recommenders/cf_train_simple.py
 ```
 
 ### Expected Production Run (100% data, 50 components)
+
 ```
 ⏱️  Total Time: ~9 minutes
 📊 Variance Explained: ~37% (same)
@@ -116,6 +121,7 @@ DATA_SAMPLE_PERCENT = 10       # For experiments (change to 100 for production)
 ```
 
 **Why these settings?**
+
 - N_COMPONENTS=50: Gives 37% variance in 10s, good balance
 - SVD_ITERATIONS=50: More iterations give diminishing returns
 - N_SIMILAR_USERS=20: Good diversity without too much computation
@@ -130,14 +136,14 @@ Start → cf_train_experiment.py (16s)
    ├─ N_COMPONENTS=20 → Variance=35% (too low)
    ├─ N_COMPONENTS=50 → Variance=37% ✅ (good!)
    └─ N_COMPONENTS=75 → Variance=38% (marginal)
-   
+
 Decision: Keep N_COMPONENTS=50
 
 Update cf_train_simple.py with best values
 
 Run → cf_train_simple.py (9 min)
    └─ Generates recommendations for all 557k users
-   
+
 Result: Ready for FastAPI integration!
 ```
 
@@ -169,17 +175,20 @@ Libraries:   CuPy ✅ (installed but CPU sufficient for now)
 ## ✅ Next Steps
 
 ### Immediate (This Session)
+
 1. ✅ Modify `cf_train_experiment.py` hyperparameters
 2. ✅ Run experiments and compare results (16s each)
 3. ✅ Choose best hyperparameters
 
 ### When Ready for Production
+
 1. Update `cf_train_simple.py` with best values
 2. Run full training: `python ml/recommenders/cf_train_simple.py`
 3. Wait for completion (~9 minutes)
 4. Check `data/recommendations/` for output parquets
 
 ### Then Create FastAPI Endpoints
+
 1. Create `backend/app/routers/recommendations.py`
 2. Load precomputed parquets
 3. Create `/recommendations/customers-also-bought/{user_id}`
@@ -223,12 +232,12 @@ python -c "import cupy, numpy, pandas, sklearn; print('All OK')"
 
 ## ⚠️ Common Pitfalls
 
-| Issue | Solution |
-|-------|----------|
-| "Not enough recommendations?" | Increase `N_SIMILAR_USERS` in experiment script |
-| "Running too slow?" | Keep `DATA_SAMPLE_PERCENT = 10` in experiment script |
-| "Variance too low?" | Increase `N_COMPONENTS` (try 75 or 100) |
-| "Out of memory?" | Reduce `N_COMPONENTS` or `DATA_SAMPLE_PERCENT` |
+| Issue                         | Solution                                             |
+| ----------------------------- | ---------------------------------------------------- |
+| "Not enough recommendations?" | Increase `N_SIMILAR_USERS` in experiment script      |
+| "Running too slow?"           | Keep `DATA_SAMPLE_PERCENT = 10` in experiment script |
+| "Variance too low?"           | Increase `N_COMPONENTS` (try 75 or 100)              |
+| "Out of memory?"              | Reduce `N_COMPONENTS` or `DATA_SAMPLE_PERCENT`       |
 
 ---
 
@@ -255,6 +264,7 @@ d:\LAYR---ml_db_proj
 ## ✨ Summary
 
 You now have:
+
 - ✅ All GPU libraries installed (CUDA 12.9)
 - ✅ Fast iteration script (16 seconds per run)
 - ✅ Production training script (9 minutes)
@@ -265,6 +275,7 @@ You now have:
 **Ready to experiment!** 🚀
 
 Start with:
+
 ```bash
 python ml/recommenders/cf_train_experiment.py
 ```

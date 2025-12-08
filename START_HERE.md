@@ -8,7 +8,7 @@
 └─────────────────────────────────────────────────────────────┘
 
                         ↓
-                        
+
       ┌────────────────────────────┐
       │  cf_train_experiment.py    │
       │  (Fast: 16 seconds)        │
@@ -21,9 +21,9 @@
          Try N=20  N=50 ✅  N=75
          Try I=50  I=100
          Try U=20  U=50
-         
+
                         ↓ (When happy)
-                        
+
       ┌────────────────────────────┐
       │  cf_train_simple.py        │
       │  (Full: 9 minutes)         │
@@ -57,11 +57,13 @@
 ## 🚀 Start Here - 3 Easy Steps
 
 ### Step 1: Run an Experiment (16 seconds)
+
 ```bash
 python ml/recommenders/cf_train_experiment.py
 ```
 
 **Output:**
+
 ```
 🎯 Variance explained: 37.07%
 ✅ Generated 1,000 recommendations
@@ -115,6 +117,7 @@ PRODUCTION (100% data, 9m):
 ## 🎓 Understanding Your Scripts
 
 ### cf_train_experiment.py (Experimentation)
+
 ```python
 # The magic happens here:
 
@@ -132,6 +135,7 @@ N_SIMILAR_ITEMS = 20     # More = suggestions, slower
 ```
 
 ### cf_train_simple.py (Production)
+
 ```python
 # Same algorithm, but:
 
@@ -147,6 +151,7 @@ N_SIMILAR_ITEMS = 20     # More = suggestions, slower
 ## 💡 Pro Tips
 
 **Tip 1: Smart Iteration**
+
 ```bash
 # Start with defaults
 python ml/recommenders/cf_train_experiment.py
@@ -162,6 +167,7 @@ python ml/recommenders/cf_train_experiment.py
 ```
 
 **Tip 2: Track Your Experiments**
+
 ```
 Iteration 1: N=20  → Var=35%  (too low)
 Iteration 2: N=50  → Var=37%  (good) ✅
@@ -172,6 +178,7 @@ Decision: Use N=50 for production
 ```
 
 **Tip 3: Variance Sweet Spot**
+
 ```
 20-30% = Too low (poor recommendations)
 35-40% = Good (sweet spot) ✅
@@ -185,14 +192,15 @@ Target: 35-40% variance
 
 ## 📈 What Each Hyperparameter Does
 
-| Parameter | Range | Effect | Time |
-|-----------|-------|--------|------|
-| **N_COMPONENTS** | 20-100 | Embedding quality | +1s/25 components |
-| **SVD_ITERATIONS** | 20-100 | Convergence quality | +1s/25 iterations |
-| **N_SIMILAR_USERS** | 5-50 | Recommendation diversity | +0.5s/10 users |
-| **N_SIMILAR_ITEMS** | 5-30 | Similarity suggestions | +0.1s/10 items |
+| Parameter           | Range  | Effect                   | Time              |
+| ------------------- | ------ | ------------------------ | ----------------- |
+| **N_COMPONENTS**    | 20-100 | Embedding quality        | +1s/25 components |
+| **SVD_ITERATIONS**  | 20-100 | Convergence quality      | +1s/25 iterations |
+| **N_SIMILAR_USERS** | 5-50   | Recommendation diversity | +0.5s/10 users    |
+| **N_SIMILAR_ITEMS** | 5-30   | Similarity suggestions   | +0.1s/10 items    |
 
 **Best bang for buck:**
+
 - **N_COMPONENTS**: Biggest impact on quality
 - **SVD_ITERATIONS**: Diminishing returns after 50
 - **N_SIMILAR_USERS**: Set to 20, done
@@ -213,18 +221,21 @@ Target: 35-40% variance
 ## 🆘 Troubleshooting
 
 **Q: Script is slow, even in experiment mode?**
+
 ```python
 # Use less data:
 DATA_SAMPLE_PERCENT = 5  # Instead of 10
 ```
 
 **Q: Not generating enough recommendations?**
+
 ```python
 # Increase similarity considerations:
 N_SIMILAR_USERS = 50  # Instead of 20
 ```
 
 **Q: Getting OOM (out of memory)?**
+
 ```python
 # Reduce complexity:
 N_COMPONENTS = 30      # Instead of 50
@@ -232,6 +243,7 @@ DATA_SAMPLE_PERCENT = 5  # Instead of 10
 ```
 
 **Q: Variance too low?**
+
 ```python
 # Increase model capacity:
 N_COMPONENTS = 75      # Instead of 50
@@ -267,12 +279,14 @@ data/
 ## 🎯 Your Next Actions
 
 **Today:**
+
 1. Run: `python ml/recommenders/cf_train_experiment.py`
 2. Note the "Variance explained" metric
 3. Try different N_COMPONENTS values
 4. Pick the best trade-off
 
 **Tomorrow (or when ready):**
+
 1. Update `cf_train_simple.py` with best hyperparameters
 2. Run: `python ml/recommenders/cf_train_simple.py`
 3. Wait for completion (~9 min)

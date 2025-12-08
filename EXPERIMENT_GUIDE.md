@@ -16,15 +16,18 @@
 ## 📁 Two Training Scripts
 
 ### 1. **cf_train_experiment.py** - Fast Iteration (16.5 seconds)
+
 For rapid hyperparameter tuning using 10% sample data.
 
 **Use this to:**
+
 - Test different `N_COMPONENTS` (20, 30, 50, 75, 100)
 - Test different `SVD_ITERATIONS` (20, 50, 100)
 - Test different `N_SIMILAR_USERS` (10, 20, 50)
 - Get feedback in ~15-20 seconds
 
 **Run:**
+
 ```bash
 python ml/recommenders/cf_train_experiment.py
 ```
@@ -34,14 +37,17 @@ python ml/recommenders/cf_train_experiment.py
 ---
 
 ### 2. **cf_train_simple.py** - Production Training (9 minutes)
+
 Full data training with best hyperparameters.
 
 **Use this when:**
+
 - You've found optimal hyperparameters via experiments
 - You want production-ready recommendations
 - You have 9 minutes to wait
 
 **Run:**
+
 ```bash
 python ml/recommenders/cf_train_simple.py
 ```
@@ -79,43 +85,49 @@ python ml/recommenders/cf_train_simple.py
 
 ## 📊 Key Metrics to Compare
 
-| Metric | What It Means | Target |
-|--------|---------------|--------|
-| **Variance Explained** | Quality of embeddings | 35-75% is good |
-| **Avg Recommendation Score** | How relevant recommendations are | Higher is better |
-| **Avg Item Similarity** | Quality of "often bought together" | 0.3-0.9 range |
-| **Time** | Training speed | Lower is better for iteration |
+| Metric                       | What It Means                      | Target                        |
+| ---------------------------- | ---------------------------------- | ----------------------------- |
+| **Variance Explained**       | Quality of embeddings              | 35-75% is good                |
+| **Avg Recommendation Score** | How relevant recommendations are   | Higher is better              |
+| **Avg Item Similarity**      | Quality of "often bought together" | 0.3-0.9 range                 |
+| **Time**                     | Training speed                     | Lower is better for iteration |
 
 ---
 
 ## 💡 Hyperparameter Tuning Tips
 
 ### N_COMPONENTS (Impact: HIGH)
+
 - **20 components:** Fast but low quality (35% variance)
 - **50 components:** Sweet spot (37% variance) ✅ **RECOMMENDED**
 - **100 components:** Overkill for this data (39% variance)
 
 **Effect on time:**
+
 - 20: 8 seconds
 - 50: 10 seconds
 - 100: 14 seconds
 
 ### SVD_ITERATIONS (Impact: MEDIUM)
+
 - **20 iterations:** Quick but may not converge
 - **50 iterations:** Good balance ✅ **RECOMMENDED**
 - **100 iterations:** Marginal improvement over 50
 
 **Effect on time:**
+
 - 20: 7 seconds
 - 50: 10 seconds
 - 100: 13 seconds
 
 ### N_SIMILAR_USERS (Impact: LOW)
+
 - **10 users:** Fast, less diverse recommendations
 - **20 users:** Good balance ✅ **RECOMMENDED**
 - **50 users:** Slower, only marginal improvement
 
 ### DATA_SAMPLE_PERCENT
+
 - **10%:** Fast iteration (16s) → Use for experiments
 - **100%:** Production (9 min) → Use when ready
 
@@ -131,12 +143,14 @@ N_COMPONENTS = 20  # Change this
 ```
 
 Run and check variance explained:
+
 ```bash
 python ml/recommenders/cf_train_experiment.py
 # Result: 35.12% - Too low
 ```
 
 Try again:
+
 ```python
 N_COMPONENTS = 50  # Try this
 ```
@@ -150,16 +164,17 @@ python ml/recommenders/cf_train_experiment.py
 
 ## 📈 Expected Performance
 
-| Dataset | Components | Time | Variance | Recommendations |
-|---------|-----------|------|----------|-----------------|
-| 10% (experiment) | 50 | 16.5s | 37% | 1,000+ |
-| 100% (production) | 50 | 9m | 37% | 50,000+ |
+| Dataset           | Components | Time  | Variance | Recommendations |
+| ----------------- | ---------- | ----- | -------- | --------------- |
+| 10% (experiment)  | 50         | 16.5s | 37%      | 1,000+          |
+| 100% (production) | 50         | 9m    | 37%      | 50,000+         |
 
 ---
 
 ## 🔍 Troubleshooting
 
 ### Script runs slow?
+
 ```python
 # Reduce sample size in cf_train_experiment.py
 DATA_SAMPLE_PERCENT = 5  # Faster iteration
@@ -167,12 +182,14 @@ N_USERS_FOR_RECS = 50    # Fewer users to process
 ```
 
 ### Not enough recommendations?
+
 ```python
 # Increase N_SIMILAR_USERS
 N_SIMILAR_USERS = 50  # Was 20
 ```
 
 ### Quality too low?
+
 ```python
 # Increase components or iterations
 N_COMPONENTS = 75      # Try more components

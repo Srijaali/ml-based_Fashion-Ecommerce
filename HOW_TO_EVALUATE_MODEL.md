@@ -3,11 +3,13 @@
 ## TL;DR - Your Model Score: 54.5/100 (⚠️ FAIR)
 
 **Good News:**
+
 - ✅ Item-based recommendations work GREAT (91% item coverage, 0.853 similarity)
 - ✅ 100% novelty - users only see new products
 - ✅ Good diversity - 20 items per user
 
 **Bad News:**
+
 - ⚠️ User coverage is LOW (only 0.9% of customers have recs)
 - ⚠️ Embeddings have no variance (data scaling issue)
 - ⚠️ Low personalization (everyone gets similar recommendations)
@@ -19,6 +21,7 @@
 ## 📈 The 7 Evaluation Metrics Explained
 
 ### 1. **Coverage** (What % of customers get recommendations?)
+
 ```
 Your Score: 0.90%
 Status: ⚠️ LOW
@@ -38,6 +41,7 @@ How to fix:
 ```
 
 ### 2. **Diversity** (Do users get many different recommendations?)
+
 ```
 Your Score: 20 items/user
 Status: ✅ EXCELLENT
@@ -52,6 +56,7 @@ Why it's good:
 ```
 
 ### 3. **Novelty** (Are recommendations new or just repeating old purchases?)
+
 ```
 Your Score: 100%
 Status: ✅ EXCELLENT
@@ -66,6 +71,7 @@ Why it's good:
 ```
 
 ### 4. **Quality/Variance** (Do embeddings capture user differences?)
+
 ```
 Your Score: 0.0000
 Status: ⚠️ LOW
@@ -85,8 +91,9 @@ This will amplify the score differences so SVD can learn patterns.
 ```
 
 ### 5. **Recommendation Scores** (Do recommendations have good confidence scores?)
+
 ```
-Your Score: 
+Your Score:
   - User-based: 0.0000 (problem)
   - Item-based: 0.853 (good!)
 
@@ -107,6 +114,7 @@ Why user-based is bad:
 ```
 
 ### 6. **Personalization** (Do different users get different recommendations?)
+
 ```
 Your Score: 1.7%
 Status: ⚠️ LOW
@@ -131,21 +139,22 @@ How to fix:
 
 ## 📊 Score Breakdown
 
-| Metric | Your Score | Target | Status | Impact |
-|--------|-----------|--------|--------|--------|
-| **Coverage** | 0.90% | >5% | ⚠️ Low | HIGH |
-| **Diversity** | 20 items | >5 items | ✅ Good | LOW |
-| **Novelty** | 100% | >95% | ✅ Good | MEDIUM |
-| **Quality** | 0/25 | >15 | ⚠️ Low | HIGH |
-| **Scores** | 0.853 avg | >0.5 | ✅ Good | MEDIUM |
-| **Personalization** | 1.7% | >80% | ⚠️ Low | HIGH |
-| **TOTAL** | **54.5/100** | **>80** | **⚠️ Fair** | — |
+| Metric              | Your Score   | Target   | Status      | Impact |
+| ------------------- | ------------ | -------- | ----------- | ------ |
+| **Coverage**        | 0.90%        | >5%      | ⚠️ Low      | HIGH   |
+| **Diversity**       | 20 items     | >5 items | ✅ Good     | LOW    |
+| **Novelty**         | 100%         | >95%     | ✅ Good     | MEDIUM |
+| **Quality**         | 0/25         | >15      | ⚠️ Low      | HIGH   |
+| **Scores**          | 0.853 avg    | >0.5     | ✅ Good     | MEDIUM |
+| **Personalization** | 1.7%         | >80%     | ⚠️ Low      | HIGH   |
+| **TOTAL**           | **54.5/100** | **>80**  | **⚠️ Fair** | —      |
 
 ---
 
 ## 🚀 How to Improve (Ranked by Impact)
 
 ### Fix #1: Increase User Coverage (HIGHEST IMPACT)
+
 ```python
 # cf_train_simple.py, line ~70
 USER_SAMPLE_SIZE = 50000  # Was 5000
@@ -156,6 +165,7 @@ USER_SAMPLE_SIZE = 50000  # Was 5000
 ```
 
 ### Fix #2: Scale Time-Weighted Scores (MEDIUM IMPACT)
+
 ```python
 # cf_train_simple.py, before building sparse matrix
 dataset_a['time_weighted_score'] = np.sqrt(dataset_a['time_weighted_score'])
@@ -166,6 +176,7 @@ dataset_a['time_weighted_score'] = np.sqrt(dataset_a['time_weighted_score'])
 ```
 
 ### Fix #3: Better User Recommendation Scoring (MEDIUM IMPACT)
+
 ```python
 # cf_train_simple.py, line ~400 (recommendation generation)
 # Instead of sum:
@@ -182,6 +193,7 @@ scores = (
 ```
 
 ### Fix #4: Full Training (LONG-TERM)
+
 ```python
 # After fixes #1-3, run full training
 USER_SAMPLE_SIZE = 557567  # All users
@@ -197,11 +209,13 @@ USER_SAMPLE_SIZE = 557567  # All users
 ## ✅ What's Ready to Deploy
 
 **Deploy NOW:**
+
 - ✅ "Often Bought Together" widget (item-based CF is solid)
 - ✅ "Similar Products" section (0.853 avg similarity is excellent)
 - ✅ Recommendation infrastructure (API endpoints, database)
 
 **Deploy LATER (after improvements):**
+
 - ⏸️ "Personalized You May Like" (needs full user coverage)
 - ⏸️ Email recommendations (needs personalization)
 - ⏸️ Homepage widget (too limited coverage now)
@@ -210,30 +224,33 @@ USER_SAMPLE_SIZE = 557567  # All users
 
 ## 🎯 Real-World Benchmarks
 
-| System | Coverage | Quality | Personalization | Business Value |
-|--------|----------|---------|-----------------|-----------------|
-| Random | 100% | 0% | 0% | Low (baseline) |
-| **Your Model** | **0.9%** | **Low** | **1.7%** | **Fair** |
-| Good Recommender | 50%+ | 40%+ | 50%+ | Good |
-| Netflix/Amazon | 100% | 70%+ | 80%+ | Excellent |
+| System           | Coverage | Quality | Personalization | Business Value |
+| ---------------- | -------- | ------- | --------------- | -------------- |
+| Random           | 100%     | 0%      | 0%              | Low (baseline) |
+| **Your Model**   | **0.9%** | **Low** | **1.7%**        | **Fair**       |
+| Good Recommender | 50%+     | 40%+    | 50%+            | Good           |
+| Netflix/Amazon   | 100%     | 70%+    | 80%+            | Excellent      |
 
 ---
 
 ## 💡 What the Metrics Mean for Business
 
 ### Current State (54.5/100):
+
 - Can recommend to: 5,000 active users
 - Items recommended to most customers: "Often bought together"
 - Expected CTR: 2-3%
 - Expected conversion: 1-2% of clicks → purchase
 
 ### After 3-Hour Fix (70/100):
+
 - Can recommend to: 45,000 users
 - Added: Better quality embeddings
 - Expected CTR: 3-4%
 - Expected conversion: 1-2% of clicks → purchase
 
 ### After Full Training (85/100):
+
 - Can recommend to: ALL 557,567 users
 - Full personalization enabled
 - Expected CTR: 4-6%
@@ -251,6 +268,7 @@ python ml/recommenders/cf_evaluate.py
 ```
 
 **Output includes:**
+
 - Coverage analysis (what % of users/items)
 - Diversity scores (items per user)
 - Novelty metrics (% new products)
@@ -265,22 +283,27 @@ python ml/recommenders/cf_evaluate.py
 ## 🔍 Interpreting Evaluation Results
 
 **When you see "Coverage: 0.90%":**
+
 - This means only 0.9% of customers can get recommendations
 - Need to increase USER_SAMPLE_SIZE to fix this
 
 **When you see "Variance: 0.0000":**
+
 - Embeddings aren't learning differences between users
 - Need to scale time_weighted_score with sqrt or log
 
 **When you see "Novelty: 100%":**
+
 - Perfect! All recommendations are new products
 - No waste in the system
 
 **When you see "Personalization: 1.7%":**
+
 - Different users get 98% of the same recommendations
 - Need more users in training to fix this
 
 **When you see "Item Similarity: 0.853":**
+
 - Strong signal! Products are correctly matched
 - Item-based recommendations are good
 
@@ -289,17 +312,20 @@ python ml/recommenders/cf_evaluate.py
 ## ⚡ Quick Action Plan
 
 **Today (30 min):**
+
 1. Read this guide ✓
 2. Run `python ml/recommenders/cf_evaluate.py`
 3. Understand your baseline metrics
 
 **This Week (3 hours):**
+
 1. Apply Fix #1: Increase USER_SAMPLE_SIZE to 50,000
 2. Apply Fix #2: Scale time_weighted_score
 3. Retrain: `python ml/recommenders/cf_train_simple.py`
 4. Re-evaluate to see improvement
 
 **This Month (overnight):**
+
 1. Apply Fix #3: Better scoring logic
 2. Run full training with all 557,567 users
 3. Deploy to production
@@ -334,6 +360,7 @@ Status: Ready for "Often Bought Together", needs work for full personalization
 ---
 
 **TL;DR:**
+
 - ✅ Item-based (similar products) works great
 - ⚠️ User coverage too low (only 0.9%)
 - ⚠️ Personalization too low (1.7%)
