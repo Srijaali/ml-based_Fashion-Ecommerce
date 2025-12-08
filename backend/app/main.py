@@ -20,6 +20,7 @@ from app.routers import (
     transactions,
     wishlist,
     cart,
+    segmentation
 )
 from app.customer_auth import router as customer_auth_router
 from app.services.recommendation_service import RecommendationService
@@ -108,6 +109,7 @@ app.include_router(transactions.router, prefix="/transactions", tags=["Transacti
 app.include_router(wishlist.router, prefix="/wishlist", tags=["Wishlist"])
 app.include_router(cart.router, prefix="/cart", tags=["Cart"])
 app.include_router(sections.router, prefix="/sections", tags=["Sections"])
+app.include_router(segmentation.router, prefix="/segmentation",tags=["Segmentation"])
 
 # ---- Root ----
 @app.get("/")

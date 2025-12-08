@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine
 from dotenv import load_dotenv 
-
+from sentence_transformers import SentenceTransformer
 # NLP libs
 import nltk
 from nltk.stem import WordNetLemmatizer

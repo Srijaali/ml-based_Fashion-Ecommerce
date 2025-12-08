@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import os
+import numpy as np
 
 os.makedirs("data/ml", exist_ok=True)
 load_dotenv()
