@@ -3,7 +3,11 @@
 *.npy
 *.npz
 *.pkl
+*.joblib
+*.joblib.gz
 data/ml/
+data/recommendations/*.joblib*
+data/content_based_model/*.joblib*
 
 # Python cache
 __pycache__/

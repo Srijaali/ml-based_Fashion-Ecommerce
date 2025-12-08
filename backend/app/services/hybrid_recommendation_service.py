@@ -12,6 +12,7 @@ Smart routing by user/item type with graceful fallback chains.
 import pandas as pd
 import numpy as np
 import pickle
+import joblib
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
@@ -92,103 +93,193 @@ class HybridRecommendationService:
         try:
             logger.info(f"Loading CF models from {self.cf_model_dir}...")
             
-            # Load recommendations CSV
-            recs_path = self.cf_model_dir / "recommendations.csv"
-            if recs_path.exists():
-                self.recs_df = pd.read_csv(recs_path)
-                logger.info(f"✓ CF recommendations.csv ({len(self.recs_df):,} records)")
+            # Try to load from joblib bundle first (fast path)
+            bundle_path = self.cf_model_dir / "cf_models_bundle.joblib"
+            bundle_loaded = False
             
-            # Load embeddings
-            user_factors_path = self.cf_model_dir / "user_latent_factors.npy"
-            if user_factors_path.exists():
-                self.user_factors = np.load(user_factors_path)
-                logger.info(f"✓ CF user_latent_factors (shape: {self.user_factors.shape})")
+            if bundle_path.exists() or (self.cf_model_dir / "cf_models_bundle.joblib.gz").exists():
+                try:
+                    bundle = joblib.load(str(bundle_path) if bundle_path.exists() 
+                                        else str(self.cf_model_dir / "cf_models_bundle.joblib.gz"))
+                    
+                    # Extract from bundle
+                    self.recs_df = bundle.get("recs_df")
+                    self.user_factors = bundle.get("user_factors")
+                    self.item_factors = bundle.get("item_factors")
+                    self.item_similarity_cf = bundle.get("item_similarity")
+                    self.customer_mapping = bundle.get("customer_mapping")
+                    self.item_mapping = bundle.get("item_mapping")
+                    
+                    # Create reverse mappings
+                    if self.customer_mapping:
+                        self.idx_to_customer = {v: k for k, v in self.customer_mapping.items()}
+                    if self.item_mapping:
+                        self.idx_to_item = {v: k for k, v in self.item_mapping.items()}
+                    
+                    metadata = bundle.get("metadata", {})
+                    logger.info(f"✓ CF bundle loaded ({metadata.get('created', 'unknown')})")
+                    logger.info(f"  - {len(self.recs_df):,} recommendations")
+                    logger.info(f"  - {metadata.get('n_users', 'unknown')} users")
+                    logger.info(f"  - {metadata.get('n_items', 'unknown')} items")
+                    bundle_loaded = True
+                    
+                except Exception as e:
+                    logger.warning(f"⚠ Failed to load CF bundle: {e}, falling back to individual files...")
+                    bundle_loaded = False
             
-            item_factors_path = self.cf_model_dir / "item_latent_factors.npy"
-            if item_factors_path.exists():
-                self.item_factors = np.load(item_factors_path)
-                logger.info(f"✓ CF item_latent_factors (shape: {self.item_factors.shape})")
-            
-            # Load similarity matrix
-            item_sim_path = self.cf_model_dir / "item_similarity.npy"
-            if item_sim_path.exists():
-                self.item_similarity_cf = np.load(item_sim_path)
-                logger.info(f"✓ CF item_similarity (shape: {self.item_similarity_cf.shape})")
-            
-            # Load mappings
-            customer_mapping_path = self.cf_model_dir / "customer_mapping.pkl"
-            if customer_mapping_path.exists():
-                with open(customer_mapping_path, 'rb') as f:
-                    self.customer_mapping = pickle.load(f)
-                self.idx_to_customer = {v: k for k, v in self.customer_mapping.items()}
-                logger.info(f"✓ CF customer_mapping ({len(self.customer_mapping):,} customers)")
-            
-            item_mapping_path = self.cf_model_dir / "item_mapping.pkl"
-            if item_mapping_path.exists():
-                with open(item_mapping_path, 'rb') as f:
-                    self.item_mapping = pickle.load(f)
-                self.idx_to_item = {v: k for k, v in self.item_mapping.items()}
-                logger.info(f"✓ CF item_mapping ({len(self.item_mapping):,} items)")
+            # Fallback: Load from individual files
+            if not bundle_loaded:
+                logger.info("Loading from individual files (legacy mode)...")
+                
+                # Load recommendations CSV
+                recs_path = self.cf_model_dir / "recommendations.csv"
+                if recs_path.exists():
+                    self.recs_df = pd.read_csv(recs_path)
+                    logger.info(f"✓ CF recommendations.csv ({len(self.recs_df):,} records)")
+                
+                # Load embeddings
+                user_factors_path = self.cf_model_dir / "user_latent_factors.npy"
+                if user_factors_path.exists():
+                    self.user_factors = np.load(user_factors_path)
+                    logger.info(f"✓ CF user_latent_factors (shape: {self.user_factors.shape})")
+                
+                item_factors_path = self.cf_model_dir / "item_latent_factors.npy"
+                if item_factors_path.exists():
+                    self.item_factors = np.load(item_factors_path)
+                    logger.info(f"✓ CF item_latent_factors (shape: {self.item_factors.shape})")
+                
+                # Load similarity matrix
+                item_sim_path = self.cf_model_dir / "item_similarity.npy"
+                if item_sim_path.exists():
+                    self.item_similarity_cf = np.load(item_sim_path)
+                    logger.info(f"✓ CF item_similarity (shape: {self.item_similarity_cf.shape})")
+                
+                # Load mappings
+                customer_mapping_path = self.cf_model_dir / "customer_mapping.pkl"
+                if customer_mapping_path.exists():
+                    with open(customer_mapping_path, 'rb') as f:
+                        self.customer_mapping = pickle.load(f)
+                    self.idx_to_customer = {v: k for k, v in self.customer_mapping.items()}
+                    logger.info(f"✓ CF customer_mapping ({len(self.customer_mapping):,} customers)")
+                
+                item_mapping_path = self.cf_model_dir / "item_mapping.pkl"
+                if item_mapping_path.exists():
+                    with open(item_mapping_path, 'rb') as f:
+                        self.item_mapping = pickle.load(f)
+                    self.idx_to_item = {v: k for k, v in self.item_mapping.items()}
+                    logger.info(f"✓ CF item_mapping ({len(self.item_mapping):,} items)")
             
         except Exception as e:
             logger.error(f"❌ Error loading CF models: {e}")
 
     def _load_cb_models(self) -> None:
-        """Load content-based model artifacts"""
+        """Load content-based model artifacts (lazy loading - load only if needed)"""
         try:
-            logger.info(f"Loading CB models from {self.cb_model_dir}...")
-            
-            # Load CB similarity matrix
-            cb_sim_path = self.cb_model_dir / "article_similarity_matrix.npy"
-            if cb_sim_path.exists():
-                self.article_similarity_cb = np.load(cb_sim_path)
-                logger.info(f"✓ CB article_similarity_matrix (shape: {self.article_similarity_cb.shape})")
+            # CB loading is deferred - check for bundles on first use via property
+            bundle_path = self.cb_model_dir / "cb_models_bundle.joblib"
+            if bundle_path.exists() or (self.cb_model_dir / "cb_models_bundle.joblib.gz").exists():
+                logger.info(f"✓ CB bundle available (will load on first use)")
             else:
-                logger.warning(f"⚠ CB similarity matrix not found at {cb_sim_path}")
+                logger.warning(f"⚠ CB models not available at {self.cb_model_dir}")
+                logger.info("   (awaiting artifacts from Kaggle, see TEAM_INTEGRATION_GUIDE.md)")
             
-            # Load embeddings
-            embeddings_path = self.cb_model_dir / "article_text_embeddings.npy"
-            if embeddings_path.exists():
-                self.article_embeddings_cb = np.load(embeddings_path)
-                logger.info(f"✓ CB article_text_embeddings (shape: {self.article_embeddings_cb.shape})")
+        except Exception as e:
+            logger.error(f"❌ Error checking CB models: {e}")
+    
+    def _ensure_cb_loaded(self) -> bool:
+        """
+        Lazy load CB models on first use.
+        
+        Returns:
+            bool: True if CB models are loaded, False otherwise
+        """
+        if self.article_similarity_cb is not None:
+            return True  # Already loaded
+        
+        try:
+            bundle_path = self.cb_model_dir / "cb_models_bundle.joblib"
+            bundle_loaded = False
             
-            # Load vectorizers
-            tfidf_path = self.cb_model_dir / "tfidf_vectorizer.pkl"
-            if tfidf_path.exists():
-                with open(tfidf_path, 'rb') as f:
-                    self.tfidf_vectorizer = pickle.load(f)
-                logger.info(f"✓ CB tfidf_vectorizer loaded")
+            # Try joblib bundle first
+            if bundle_path.exists() or (self.cb_model_dir / "cb_models_bundle.joblib.gz").exists():
+                try:
+                    bundle = joblib.load(str(bundle_path) if bundle_path.exists() 
+                                        else str(self.cb_model_dir / "cb_models_bundle.joblib.gz"))
+                    
+                    self.article_similarity_cb = bundle.get("article_similarity")
+                    self.article_embeddings_cb = bundle.get("article_embeddings")
+                    self.tfidf_vectorizer = bundle.get("tfidf_vectorizer")
+                    self.price_scaler = bundle.get("price_scaler")
+                    self.article_id_to_idx_cb = bundle.get("article_id_to_idx")
+                    self.cb_config = bundle.get("config")
+                    
+                    if self.article_id_to_idx_cb:
+                        self.idx_to_article_id_cb = {v: k for k, v in self.article_id_to_idx_cb.items()}
+                    
+                    metadata = bundle.get("metadata", {})
+                    logger.info(f"✓ CB bundle loaded on-demand ({metadata.get('created', 'unknown')})")
+                    logger.info(f"  - {metadata.get('n_articles', 'unknown')} articles")
+                    bundle_loaded = True
+                    
+                except Exception as e:
+                    logger.warning(f"⚠ Failed to load CB bundle: {e}, trying individual files...")
+                    bundle_loaded = False
             
-            price_scaler_path = self.cb_model_dir / "price_scaler.pkl"
-            if price_scaler_path.exists():
-                with open(price_scaler_path, 'rb') as f:
-                    self.price_scaler = pickle.load(f)
-                logger.info(f"✓ CB price_scaler loaded")
+            # Fallback: Load from individual files
+            if not bundle_loaded:
+                # Load CB similarity matrix
+                cb_sim_path = self.cb_model_dir / "article_similarity_matrix.npy"
+                if cb_sim_path.exists():
+                    self.article_similarity_cb = np.load(cb_sim_path)
+                    logger.info(f"✓ CB article_similarity_matrix (shape: {self.article_similarity_cb.shape})")
+                
+                # Load embeddings
+                embeddings_path = self.cb_model_dir / "article_text_embeddings.npy"
+                if embeddings_path.exists():
+                    self.article_embeddings_cb = np.load(embeddings_path)
+                    logger.info(f"✓ CB article_text_embeddings (shape: {self.article_embeddings_cb.shape})")
+                
+                # Load vectorizers
+                tfidf_path = self.cb_model_dir / "tfidf_vectorizer.pkl"
+                if tfidf_path.exists():
+                    with open(tfidf_path, 'rb') as f:
+                        self.tfidf_vectorizer = pickle.load(f)
+                    logger.info(f"✓ CB tfidf_vectorizer loaded")
+                
+                price_scaler_path = self.cb_model_dir / "price_scaler.pkl"
+                if price_scaler_path.exists():
+                    with open(price_scaler_path, 'rb') as f:
+                        self.price_scaler = pickle.load(f)
+                    logger.info(f"✓ CB price_scaler loaded")
+                
+                # Load ID mappings
+                id_to_idx_path = self.cb_model_dir / "article_id_to_idx.pkl"
+                if id_to_idx_path.exists():
+                    with open(id_to_idx_path, 'rb') as f:
+                        self.article_id_to_idx_cb = pickle.load(f)
+                    self.idx_to_article_id_cb = {v: k for k, v in self.article_id_to_idx_cb.items()}
+                    logger.info(f"✓ CB article_id_to_idx ({len(self.article_id_to_idx_cb):,} articles)")
+                
+                # Load config
+                config_path = self.cb_model_dir / "config.pkl"
+                if config_path.exists():
+                    with open(config_path, 'rb') as f:
+                        self.cb_config = pickle.load(f)
+                    logger.info(f"✓ CB config loaded")
             
-            # Load ID mappings
-            id_to_idx_path = self.cb_model_dir / "article_id_to_idx.pkl"
-            if id_to_idx_path.exists():
-                with open(id_to_idx_path, 'rb') as f:
-                    self.article_id_to_idx_cb = pickle.load(f)
-                self.idx_to_article_id_cb = {v: k for k, v in self.article_id_to_idx_cb.items()}
-                logger.info(f"✓ CB article_id_to_idx ({len(self.article_id_to_idx_cb):,} articles)")
-            
-            # Load config
-            config_path = self.cb_model_dir / "config.pkl"
-            if config_path.exists():
-                with open(config_path, 'rb') as f:
-                    self.cb_config = pickle.load(f)
-                logger.info(f"✓ CB config loaded: {self.cb_config}")
+            return self.article_similarity_cb is not None
             
         except Exception as e:
             logger.error(f"❌ Error loading CB models: {e}")
+            return False
 
     def _log_service_status(self) -> None:
         """Log overall service readiness status"""
         cf_ready = self.recs_df is not None and self.item_mapping is not None
         cb_ready = self.article_similarity_cb is not None and self.article_id_to_idx_cb is not None
         
-        logger.info(f"📊 Service Status - CF: {'✓' if cf_ready else '✗'}, CB: {'✓' if cb_ready else '✗'}")
+        logger.info(f"📊 Service Status - CF: {'✓ READY' if cf_ready else '✗ MISSING'}, "
+                   f"CB: {'✓ LOADED' if cb_ready else '⏳ LAZY-LOAD (on-demand)'}")
 
     # ===== COLD START HANDLING =====
     
@@ -351,6 +442,10 @@ class HybridRecommendationService:
         Returns:
             List of similar products from CB signal
         """
+        # Lazy load CB models if needed
+        if not self._ensure_cb_loaded():
+            return []
+        
         if self.article_similarity_cb is None or self.article_id_to_idx_cb is None:
             return []
         
