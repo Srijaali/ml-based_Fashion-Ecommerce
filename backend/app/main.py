@@ -31,6 +31,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Reviews
+from app.router import sentiment
+from app.router import review_similarity
+from app.router import product_similarity
+from app.router import product_wordcloud
+from app.router import category_complaints
+
+
 # ---- Initialize Recommendation Services ----
 recommendation_service = None
 hybrid_service = None
@@ -110,6 +118,11 @@ app.include_router(wishlist.router, prefix="/wishlist", tags=["Wishlist"])
 app.include_router(cart.router, prefix="/cart", tags=["Cart"])
 app.include_router(sections.router, prefix="/sections", tags=["Sections"])
 app.include_router(segmentation.router, prefix="/segmentation",tags=["Segmentation"])
+app.include_router(sentiment.router)
+app.include_router(review_similarity.router)
+app.include_router(product_similarity.router)
+app.include_router(product_wordcloud.router)
+app.include_router(category_complaints.router)
 
 # ---- Root ----
 @app.get("/")
