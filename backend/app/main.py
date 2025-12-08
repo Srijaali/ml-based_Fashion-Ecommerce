@@ -14,6 +14,7 @@ from app.routers import (
     orders,
     order_items,
     recommendations,
+    hybrid_recommendations,
     reviews,
     sections,
     transactions,
@@ -22,35 +23,43 @@ from app.routers import (
 )
 from app.customer_auth import router as customer_auth_router
 from app.services.recommendation_service import RecommendationService
+from app.services.hybrid_recommendation_service import HybridRecommendationService
 app = FastAPI(
     title="LAYR API",
     description="FastAPI backend for e-commerce project",
     version="1.0.0"
 )
 
-# ---- Initialize Recommendation Service ----
+# ---- Initialize Recommendation Services ----
 recommendation_service = None
+hybrid_service = None
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Load recommendation model on app startup"""
-    global recommendation_service
+    """Load recommendation models on app startup"""
+    global recommendation_service, hybrid_service
     try:
         import logging
         logger = logging.getLogger(__name__)
         logger.info("🚀 Loading recommendation models...")
         
+        # Load CF-only service
         recommendation_service = RecommendationService(model_dir="data/recommendations")
-        
-        # Register service with router
         recommendations.set_recommendation_service(recommendation_service)
         
-        logger.info("✅ Recommendation service loaded successfully")
+        # Load Hybrid service (CF + CB)
+        hybrid_service = HybridRecommendationService(
+            cf_model_dir="data/recommendations",
+            cb_model_dir="data/content_based_model"
+        )
+        hybrid_recommendations.set_hybrid_recommendation_service(hybrid_service)
+        
+        logger.info("✅ Recommendation services loaded successfully")
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.warning(f"⚠️ Could not load recommendation service: {e}")
+        logger.warning(f"⚠️ Could not load recommendation services: {e}")
         logger.warning("Recommendation endpoints will return 503 (Service Unavailable)")
 
 
@@ -93,6 +102,7 @@ app.include_router(events.router, prefix="/events", tags=["Events"])
 app.include_router(orders.router, prefix="/orders", tags=["Orders"])
 app.include_router(order_items.router, prefix="/order-items", tags=["Order Items"])
 app.include_router(recommendations.router, prefix="/recommendations", tags=["Recommendations"])
+app.include_router(hybrid_recommendations.router, prefix="/hybrid-recommendations", tags=["Hybrid Recommendations"])
 app.include_router(reviews.router, prefix="/reviews", tags=["Reviews"])
 app.include_router(transactions.router, prefix="/transactions", tags=["Transactions"])
 app.include_router(wishlist.router, prefix="/wishlist", tags=["Wishlist"])
