@@ -19,12 +19,15 @@ API docs: `http://localhost:8000/docs` (Swagger UI)
 ## Endpoint Quick Reference
 
 ### 1. Health Check
+
 ```bash
 GET /hybrid-recommendations/health
 ```
+
 Returns service status, model info, artifact paths.
 
 **Response:**
+
 ```json
 {
   "status": "cf_ready",
@@ -45,6 +48,7 @@ Returns service status, model info, artifact paths.
 ## Product Page Endpoints
 
 ### 2. Similar Products
+
 ```bash
 GET /hybrid-recommendations/similar-products/{article_id}?limit=10
 ```
@@ -52,11 +56,13 @@ GET /hybrid-recommendations/similar-products/{article_id}?limit=10
 Find articles with similar attributes (text, category, price).
 
 **Example:**
+
 ```bash
 curl http://localhost:8000/hybrid-recommendations/similar-products/article123?limit=5
 ```
 
 **Response:**
+
 ```json
 {
   "article_id": "article123",
@@ -74,6 +80,7 @@ curl http://localhost:8000/hybrid-recommendations/similar-products/article123?li
 ---
 
 ### 3. Often Bought Together
+
 ```bash
 GET /hybrid-recommendations/often-bought/{article_id}?limit=10
 ```
@@ -81,11 +88,13 @@ GET /hybrid-recommendations/often-bought/{article_id}?limit=10
 Get items frequently co-purchased with this article.
 
 **Example:**
+
 ```bash
 curl http://localhost:8000/hybrid-recommendations/often-bought/article123?limit=5
 ```
 
 **Response:**
+
 ```json
 {
   "article_id": "article123",
@@ -103,6 +112,7 @@ curl http://localhost:8000/hybrid-recommendations/often-bought/article123?limit=
 ---
 
 ### 4. You May Also Like (Product)
+
 ```bash
 GET /hybrid-recommendations/you-may-also-like-product/{article_id}?limit=10
 ```
@@ -110,6 +120,7 @@ GET /hybrid-recommendations/you-may-also-like-product/{article_id}?limit=10
 Hybrid: 60% co-purchases + 40% attribute similarity.
 
 **Example:**
+
 ```bash
 curl http://localhost:8000/hybrid-recommendations/you-may-also-like-product/article123?limit=5
 ```
@@ -119,6 +130,7 @@ curl http://localhost:8000/hybrid-recommendations/you-may-also-like-product/arti
 ## Homepage Endpoints
 
 ### 5. Personalized For You
+
 ```bash
 GET /hybrid-recommendations/personalized/{customer_id}?limit=12
 ```
@@ -126,11 +138,13 @@ GET /hybrid-recommendations/personalized/{customer_id}?limit=12
 Get items based on customer's purchase history (CF).
 
 **Example:**
+
 ```bash
 curl http://localhost:8000/hybrid-recommendations/personalized/cust_abc123?limit=12
 ```
 
 **Response:**
+
 ```json
 {
   "customer_id": "cust_abc123",
@@ -154,6 +168,7 @@ curl http://localhost:8000/hybrid-recommendations/personalized/cust_abc123?limit
 ---
 
 ### 6. Customers Also Bought
+
 ```bash
 GET /hybrid-recommendations/customers-also-bought/{customer_id}?limit=12&k_neighbors=10
 ```
@@ -161,10 +176,12 @@ GET /hybrid-recommendations/customers-also-bought/{customer_id}?limit=12&k_neigh
 Items purchased by similar customers.
 
 **Parameters:**
+
 - `limit`: Max recommendations (default: 12)
 - `k_neighbors`: Similar users to aggregate (default: 10)
 
 **Example:**
+
 ```bash
 curl http://localhost:8000/hybrid-recommendations/customers-also-bought/cust_abc123?limit=12&k_neighbors=10
 ```
@@ -172,6 +189,7 @@ curl http://localhost:8000/hybrid-recommendations/customers-also-bought/cust_abc
 ---
 
 ### 7. Based on Your Interactions
+
 ```bash
 GET /hybrid-recommendations/based-on-interactions/{customer_id}?limit=12
 ```
@@ -179,6 +197,7 @@ GET /hybrid-recommendations/based-on-interactions/{customer_id}?limit=12
 Smart hybrid: CF for warm users, CB for cold users.
 
 **Example:**
+
 ```bash
 curl http://localhost:8000/hybrid-recommendations/based-on-interactions/cust_abc123?limit=12
 ```
@@ -186,6 +205,7 @@ curl http://localhost:8000/hybrid-recommendations/based-on-interactions/cust_abc
 ---
 
 ### 8. Trending Now
+
 ```bash
 GET /hybrid-recommendations/trending?limit=20
 ```
@@ -193,11 +213,13 @@ GET /hybrid-recommendations/trending?limit=20
 Most popular items (cached 1 hour).
 
 **Example:**
+
 ```bash
 curl http://localhost:8000/hybrid-recommendations/trending?limit=10
 ```
 
 **Response:**
+
 ```json
 {
   "trending_items": [
@@ -269,33 +291,40 @@ All endpoints return standardized responses:
 
 ## Status Codes
 
-| Code | Meaning |
-|------|---------|
-| 200 | Success |
-| 404 | Customer/Article not found |
-| 503 | Service not initialized |
+| Code | Meaning                    |
+| ---- | -------------------------- |
+| 200  | Success                    |
+| 404  | Customer/Article not found |
+| 503  | Service not initialized    |
 
 ---
 
 ## Common Issues & Solutions
 
 ### "Service not ready"
+
 ```
 Status Code: 503
 ```
+
 **Fix:** Server is still loading models. Wait 10-30 seconds and retry.
 
 ### "Customer not found"
+
 ```
 Status Code: 404
 ```
+
 **Fix:** Use a valid customer_id from your database.
 
 ### "Empty recommendations"
+
 ```
 "count": 0
 ```
+
 **This is normal!** Some scenarios return empty:
+
 - Cold-start user with no history
 - Unknown article
 - No CF data available
@@ -340,7 +369,7 @@ async function getRecommendations(customerId) {
   const response = await fetch(
     `http://localhost:8000/hybrid-recommendations/personalized/${customerId}?limit=12`
   );
-  
+
   if (!response.ok) {
     if (response.status === 404) {
       console.log("Customer not found");
@@ -349,7 +378,7 @@ async function getRecommendations(customerId) {
     }
     throw new Error(`API error: ${response.statusText}`);
   }
-  
+
   const data = await response.json();
   return data.recommendations;
 }
