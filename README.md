@@ -60,7 +60,7 @@ This project implements a full end-to-end Machine Learning pipeline for a fashio
 7. Hyperparameter Tuning
 8. Final Models & Evaluations
 9. Trend/BI Dashboards
-10. (Optional) API Serving & Integration
+10. API Serving & Integration
 ```
 
 ---
