@@ -6,7 +6,7 @@ This project implements a full end-to-end Machine Learning pipeline for a fashio
 
 ---
 
-## **🚀 Features**
+## **Features**
 
 ### **1. Hybrid Recommendation System**
 
@@ -48,7 +48,7 @@ This project implements a full end-to-end Machine Learning pipeline for a fashio
 
 ---
 
-## **📊 Project Pipeline**
+## **Project Pipeline**
 
 ```
 1. Raw Data
@@ -65,7 +65,7 @@ This project implements a full end-to-end Machine Learning pipeline for a fashio
 
 ---
 
-## **🧠 ML Datasets**
+## **ML Datasets**
 
 * **Dataset A:** User–Item interactions (CF)
 * **Dataset B:** Article content features
@@ -78,7 +78,7 @@ These datasets drive all downstream ML models.
 
 ---
 
-## **🛠️ Tech Stack**
+## **Tech Stack**
 
 **Languages & Frameworks:**
 Python, Pandas, scikit-learn, PyTorch, Sentence-BERT, Implicit, Prophet/ARIMA
@@ -94,7 +94,7 @@ FastAPI, Docker
 
 ---
 
-## **📈 Results Delivered**
+## **Results Delivered**
 
 * High-quality hybrid recommender
 * Robust sentiment-aware product intelligence
@@ -105,7 +105,7 @@ FastAPI, Docker
 
 ---
 
-### 👥 Project Contributors  
+###Project Contributors  
 
 <div align="center">
   <a href="https://www.linkedin.com/in/rayyanmerchant2004/" target="_blank">
