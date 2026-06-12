@@ -1,8 +1,35 @@
-# **Fashion E-Commerce ML System**
+# **Fashion E-Commerce ML System (Development Repository)**
 
 ### *Hybrid Recommender • NLP • Forecasting • Segmentation • Funnel Analytics*
 
-This project implements a full end-to-end Machine Learning pipeline for a fashion e-commerce platform. It converts raw transactional, product, review, and behavioral data into meaningful insights, personalized recommendations, demand forecasts, and customer intelligence.
+This repository contains the intermediate development stages of the Fashion E-Commerce ML System, including experimentation, feature development, model iterations, database design evolution, exploratory analysis, and incremental project progress.
+
+It serves as a record of the project's development lifecycle and engineering process.
+
+---
+
+## **Final Production Repository**
+
+For the complete, cleaned, and finalized implementation of the project, please visit:
+
+🔗 **Final Repository:**
+https://github.com/rayyan-merchant/ml-based_Fashion-Ecommerce
+
+---
+
+## **About This Repository**
+
+This repository may contain:
+
+* Experimental implementations
+* Early model versions
+* Intermediate datasets and outputs
+* Development snapshots
+* Database design iterations
+* Feature engineering experiments
+* Prototypes and testing code
+
+The final repository consolidates the validated components into a cleaner production-ready structure.
 
 ---
 
@@ -45,6 +72,7 @@ This project implements a full end-to-end Machine Learning pipeline for a fashio
 * Price elasticity
 * Customer lifecycle metrics
 * Sales & category evolution
+
 
 ---
 
